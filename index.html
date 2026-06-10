@@ -1,0 +1,1540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Intrinsic Value Engine — Analyst Workstation</title>
+<meta name="description" content="Company-specific Damodaran FCFF valuation: EDGAR autofill, reverse DCF, Monte Carlo, football field, implied ROIC consistency. One file, no build step.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#F7F8FA; --surface:#FFFFFF; --ink:#0F172A; --muted:#64748B;
+    --border:#E2E8F0; --accent:#0D9488; --accent-soft:rgba(13,148,136,.10);
+    --pos:#059669; --neg:#DC2626; --amber:#B45309; --amber-bg:rgba(180,83,9,.08);
+    --header:#0F172A; --header-text:#FFFFFF;
+    --shadow:0 1px 2px rgba(15,23,42,.05),0 4px 16px rgba(15,23,42,.06);
+    --radius:12px;
+  }
+  [data-theme="dark"]{
+    --bg:#0B1120; --surface:#101a2e; --ink:#E9EEF6; --muted:#8FA0B6;
+    --border:#22304a; --accent:#2DD4BF; --accent-soft:rgba(45,212,191,.12);
+    --pos:#34D399; --neg:#F87171; --amber:#FBBF24; --amber-bg:rgba(251,191,36,.10);
+    --header:#060B16; --header-text:#E9EEF6;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 6px 20px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font-family:'Inter',system-ui,sans-serif;
+       font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased}
+  h1,h2,h3{font-family:'Source Serif 4',Georgia,serif;font-weight:600;letter-spacing:-.01em}
+  .num{font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
+  header{background:var(--header);color:var(--header-text);padding:13px 22px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  header .brand h1{font-size:1.14rem;color:var(--header-text)}
+  header .brand p{font-size:.74rem;opacity:.65}
+  header .spacer{flex:1}
+  .asof{font-size:.7rem;opacity:.75;border:1px solid rgba(255,255,255,.2);border-radius:99px;padding:3px 10px;white-space:nowrap}
+  .hbtn{background:rgba(255,255,255,.10);color:var(--header-text);border:1px solid rgba(255,255,255,.18);
+        border-radius:8px;font:inherit;font-size:.78rem;padding:7px 12px;cursor:pointer;white-space:nowrap}
+  .hbtn:hover{background:rgba(255,255,255,.20)}
+  main{max-width:1340px;margin:0 auto;padding:20px 16px 56px;display:grid;
+       grid-template-columns:minmax(330px,440px) 1fr;gap:20px;align-items:start}
+  @media(max-width:1000px){main{grid-template-columns:1fr}}
+  .col{display:flex;flex-direction:column;gap:18px;min-width:0}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+        box-shadow:var(--shadow);padding:18px 20px}
+  .card h3{font-size:.96rem;margin-bottom:2px}
+  .card .sub{font-size:.77rem;color:var(--muted);margin-bottom:12px}
+  .stage-head{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+  .badge{width:24px;height:24px;border-radius:50%;background:var(--accent);color:#fff;
+         font-size:.76rem;font-weight:700;display:flex;align-items:center;justify-content:center;flex:none}
+  .stage-head h2{font-size:.98rem}
+  .stage-head .hint{font-size:.7rem;color:var(--muted);margin-left:auto;text-align:right}
+  label.fld{display:block;font-size:.78rem;font-weight:600;margin:9px 0 4px}
+  input[type=text],select,input[type=number],textarea{
+    width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:8px;
+    background:var(--surface);color:var(--ink);font:inherit;font-size:.84rem}
+  input[type=number]{font-variant-numeric:tabular-nums;text-align:right}
+  input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 14px}
+  .inwrap{position:relative}
+  .inwrap .suffix{position:absolute;right:9px;top:50%;transform:translateY(-50%);
+                  font-size:.72rem;color:var(--muted);pointer-events:none}
+  .inwrap input{padding-right:38px}
+  .note{font-size:.71rem;color:var(--muted);margin-top:3px}
+  .note.warnish{color:var(--amber)}
+  .note.good{color:var(--pos)}
+  .arow{padding:9px 0;border-bottom:1px solid var(--border)}
+  .arow:last-child{border-bottom:none}
+  .arow .top{display:flex;align-items:center;gap:6px}
+  .arow .top .name{font-size:.8rem;font-weight:600}
+  .arow .top .ctrl{margin-left:auto;display:flex;align-items:center;gap:5px}
+  .arow input[type=number]{width:88px;padding:4px 8px;font-size:.82rem}
+  .arow .un{font-size:.74rem;color:var(--muted);width:16px}
+  .src{display:inline-block;font-size:.66rem;color:var(--muted);margin-top:3px;
+       background:var(--bg);border:1px solid var(--border);border-radius:99px;padding:1px 8px;max-width:100%}
+  .src.ov{color:var(--amber);border-color:var(--amber)}
+  .reset{display:none;border:none;background:none;color:var(--accent);font-size:.68rem;
+         cursor:pointer;font-weight:600;padding:2px 4px}
+  .reset.show{display:inline}
+  .info{width:16px;height:16px;border-radius:50%;border:1px solid var(--border);background:var(--bg);
+        color:var(--muted);font-size:.6rem;font-weight:700;cursor:pointer;flex:none;
+        display:inline-flex;align-items:center;justify-content:center}
+  .info:hover{border-color:var(--accent);color:var(--accent)}
+  .tipbox{position:absolute;z-index:60;max-width:290px;background:var(--ink);color:var(--bg);
+          font-size:.74rem;line-height:1.5;padding:10px 12px;border-radius:8px;
+          box-shadow:0 6px 24px rgba(15,23,42,.3);display:none}
+  .tipbox.open{display:block}
+  [data-theme="dark"] .tipbox{background:#E9EEF6;color:#0B1120}
+  /* edgar */
+  .edgar{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px}
+  .edgar .row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+  .edgar input[type=text]{width:110px;flex:none;text-transform:uppercase}
+  .edgar button,.btn{font:inherit;font-size:.76rem;font-weight:600;padding:7px 11px;border-radius:8px;
+        border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer}
+  .edgar button:hover,.btn:hover{filter:brightness(1.08)}
+  .btn.ghost{background:var(--surface);color:var(--accent)}
+  .edgar .status{font-size:.71rem;color:var(--muted);margin-top:6px;white-space:pre-line}
+  details.fb{margin-top:8px}
+  details.fb summary{font-size:.73rem;font-weight:600;color:var(--muted);cursor:pointer}
+  details.fb textarea{margin-top:6px;font-size:.7rem;font-family:monospace;height:70px}
+  .exbtn{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:var(--accent-soft);
+         border:1px solid var(--accent);border-radius:10px;padding:9px 12px;cursor:pointer;font:inherit;margin-bottom:10px}
+  .exbtn .t{font-size:.8rem;font-weight:700;color:var(--accent)}
+  .exbtn .d{font-size:.68rem;color:var(--muted)}
+  /* switches */
+  .swrow{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);flex-wrap:wrap}
+  .swrow:last-child{border-bottom:none}
+  .swrow .name{font-size:.79rem;font-weight:600}
+  .swrow input[type=checkbox]{width:15px;height:15px;accent-color:var(--accent)}
+  .swrow .mini{display:flex;gap:6px;align-items:center;margin-left:auto}
+  .swrow .mini input[type=number]{width:78px;padding:4px 6px;font-size:.78rem}
+  .swrow .mini .ml{font-size:.68rem;color:var(--muted)}
+  .swrow .fx{flex-basis:100%;font-size:.69rem;color:var(--muted)}
+  /* headline */
+  .headline .eyebrow{font-size:.7rem;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+  .headline .company{font-family:'Source Serif 4',serif;font-size:1.02rem;font-weight:600;margin-bottom:4px}
+  .vps-row{display:flex;align-items:baseline;gap:18px;flex-wrap:wrap}
+  .vps-row .big{font-family:'Source Serif 4',serif;font-weight:700;font-size:clamp(2.1rem,4.5vw,2.9rem);
+                color:var(--accent);line-height:1.05}
+  .vs{font-size:.83rem;color:var(--muted)}
+  .vs b{color:var(--ink);font-size:1.02rem}
+  .verdict{display:inline-block;margin-top:8px;font-size:.78rem;font-weight:700;border-radius:99px;padding:4px 14px}
+  .verdict.under{background:rgba(5,150,105,.12);color:var(--pos)}
+  .verdict.over{background:rgba(220,38,38,.10);color:var(--neg)}
+  .verdict.fair{background:var(--bg);color:var(--muted);border:1px solid var(--border)}
+  .warn{display:none;margin-top:12px;font-size:.8rem;padding:10px 14px;border-radius:8px;
+        border:1px solid var(--neg);color:var(--neg);background:rgba(220,38,38,.06)}
+  .warn.show{display:block}
+  .warn.amber{border-color:var(--amber);color:var(--amber);background:var(--amber-bg)}
+  .stale .big,.stale .metric .v{opacity:.25;filter:saturate(0)}
+  .divider{border:none;border-top:1px solid var(--border);margin:13px 0}
+  .metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+  @media(max-width:560px){.metrics{grid-template-columns:1fr}}
+  .metric{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px 12px}
+  .metric .k{font-size:.66rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+  .metric .v{font-size:1.08rem;font-weight:700;margin-top:1px}
+  .metric .s{font-size:.68rem;color:var(--muted)}
+  .metric.alert{border-color:var(--neg)} .metric.alert .v{color:var(--neg)}
+  /* reverse dcf */
+  table.rev{width:100%;border-collapse:collapse;font-size:.8rem}
+  table.rev td{padding:7px 4px;border-bottom:1px solid var(--border)}
+  table.rev tr:last-child td{border-bottom:none}
+  table.rev td.v{text-align:right;font-weight:700;white-space:nowrap;color:var(--accent)}
+  table.rev .why{display:block;font-size:.67rem;color:var(--muted);font-weight:400}
+  /* coc */
+  table.coc{width:100%;border-collapse:collapse;font-size:.8rem}
+  table.coc td{padding:5px 4px;border-bottom:1px solid var(--border);vertical-align:top}
+  table.coc tr:last-child td{border-bottom:none}
+  table.coc td.v{text-align:right;font-weight:600;white-space:nowrap}
+  table.coc .why{display:block;font-size:.66rem;color:var(--muted);font-weight:400}
+  table.coc tr.total td{font-weight:700;font-size:.88rem;border-top:2px solid var(--ink)}
+  /* heatmap */
+  .hm-scroll{overflow-x:auto}
+  table.heatmap{border-collapse:separate;border-spacing:3px;width:100%;min-width:430px}
+  table.heatmap th{font-size:.68rem;font-weight:600;color:var(--muted);padding:3px 5px;white-space:nowrap}
+  table.heatmap td{text-align:center;padding:7px 5px;border-radius:7px;font-size:.76rem;font-weight:600;min-width:56px}
+  table.heatmap td.current{outline:2.5px solid var(--ink);outline-offset:-1px}
+  .hm-legend{display:flex;align-items:center;gap:8px;margin-top:9px;font-size:.68rem;color:var(--muted)}
+  .hm-bar{flex:1;max-width:180px;height:8px;border-radius:99px;background:linear-gradient(90deg,#DC2626,#F8FAFC,#059669)}
+  .chart-wrap{position:relative;height:230px}
+  .chart-wrap.tall{height:280px}
+  /* mc stats */
+  .mcstats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px}
+  @media(max-width:640px){.mcstats{grid-template-columns:repeat(2,1fr)}}
+  .mcstat{background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:8px 10px;text-align:center}
+  .mcstat .k{font-size:.63rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+  .mcstat .v{font-size:1rem;font-weight:700}
+  /* forecast */
+  .fc-scroll{overflow-x:auto}
+  table.fc{border-collapse:collapse;font-size:.74rem;width:100%;min-width:700px}
+  table.fc th{font-size:.66rem;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);
+              padding:5px 6px;text-align:right;border-bottom:1.5px solid var(--border);white-space:nowrap}
+  table.fc th:first-child{text-align:left}
+  table.fc td{padding:4px 6px;text-align:right;border-bottom:1px solid var(--border);white-space:nowrap}
+  table.fc td:first-child{text-align:left;font-weight:600}
+  table.fc tr.term td{background:var(--accent-soft);font-weight:600}
+  .stamp{font-size:.66rem;color:var(--muted)}
+  footer{max-width:1340px;margin:0 auto;padding:0 16px 36px;font-size:.72rem;color:var(--muted)}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <h1>Intrinsic Value Engine</h1>
+    <p>FCFF valuation workstation · Damodaran framework · EDGAR autofill · Monte Carlo</p>
+  </div>
+  <div class="spacer"></div>
+  <span class="asof" id="asofChip"></span>
+  <button class="hbtn" id="copyLink">Copy link</button>
+  <button class="hbtn" id="themeToggle">◐ Theme</button>
+</header>
+
+<main>
+  <!-- ================= LEFT ================= -->
+  <div class="col">
+
+    <section class="card">
+      <button class="exbtn" id="loadAsml">
+        <span style="font-size:1.1rem">📌</span>
+        <span><span class="t">Load worked example: ASML Holding NV</span><br>
+        <span class="d" id="asmlDesc">FY2025 20-F figures, June 2026 market data, every override sourced.</span></span>
+      </button>
+      <div class="stage-head"><span class="badge">1</span><h2>Company identity</h2>
+        <span class="hint">seeds industry & country data</span></div>
+      <label class="fld" for="i-nm">Company name</label>
+      <input type="text" id="i-nm" placeholder="e.g. ASML Holding NV">
+      <label class="fld" for="i-ind">Industry / sector <button class="info" data-tip="ind">i</button></label>
+      <select id="i-ind"></select>
+      <div class="grid2">
+        <div><label class="fld" for="i-cty">Country / region</label><select id="i-cty"></select></div>
+        <div><label class="fld" for="i-cur">Reporting currency</label><select id="i-cur"></select>
+          <div class="note" id="curNote"></div></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="stage-head"><span class="badge">2</span><h2>Company financials</h2>
+        <span class="hint">autofill or latest annual report</span></div>
+
+      <div class="edgar">
+        <div class="row">
+          <input type="text" id="edgarTicker" placeholder="ticker, e.g. AAPL" list="libTickers">
+          <button id="edgarBtn">Autofill</button>
+        </div>
+        <datalist id="libTickers"></datalist>
+        <div class="note">30 major companies are built in (snapshot Jun 2026) and load <b>instantly, no internet needed</b>.
+        Any other US ticker tries live SEC EDGAR. Append <b>!</b> (e.g. AAPL!) to force a fresh EDGAR fetch for a built-in name.</div>
+        <div class="status" id="edgarStatus"></div>
+        <details class="fb" id="fbBox"><summary>Guaranteed path: open + paste (works even when every proxy is down)</summary>
+          <div class="note" id="fbHint">Enter a ticker above, then:</div>
+          <a class="btn ghost" id="fbOpen" target="_blank" rel="noopener" style="display:none;text-decoration:none;margin:6px 0">1 · Open the filing JSON ↗</a>
+          <div class="note">2 · On that page: select all (Ctrl/Cmd+A), copy, and paste below — it parses automatically.</div>
+          <textarea id="fbPaste" placeholder='Paste the full companyfacts JSON here…'></textarea>
+          <button class="btn ghost" id="fbParse" style="margin-top:6px">Parse pasted JSON</button>
+        </details>
+        <details class="fb"><summary>Advanced: use your own CORS proxy (most reliable for live fetch)</summary>
+          <div class="note">SEC blocks browser CORS and public proxies rate-limit. A free 6-line Cloudflare Worker fixes it permanently:</div>
+          <pre style="font-size:.62rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px;overflow-x:auto;margin:6px 0">export default { async fetch(req) {
+  const u = new URL(req.url).searchParams.get("url");
+  if (!u || !u.startsWith("https://data.sec.gov/")) return new Response("bad url",{status:400});
+  const r = await fetch(u, {headers:{"User-Agent":"your-email@example.com"}});
+  return new Response(r.body, {headers:{"Content-Type":"application/json","Access-Control-Allow-Origin":"*"}});
+}}</pre>
+          <input type="text" id="proxyBase" placeholder="https://your-worker.workers.dev/?url=">
+          <div class="note">Saved locally. When set, it is tried first.</div>
+        </details>
+      </div>
+
+      <div class="grid2">
+        <div><label class="fld" for="i-rev">Revenue (base year)</label>
+          <div class="inwrap"><input type="number" id="i-rev" min="0" step="1" value="1000"><span class="suffix" data-sfx="M"></span></div>
+          <div class="note" id="srcRev"></div></div>
+        <div><label class="fld" for="i-ebitv">Operating income (EBIT)</label>
+          <div class="inwrap"><input type="number" id="i-ebitv" step="1" value="180"><span class="suffix" data-sfx="M"></span></div>
+          <div class="note" id="marginNote"></div></div>
+        <div><label class="fld" for="i-debt">Total debt</label>
+          <div class="inwrap"><input type="number" id="i-debt" min="0" step="1" value="200"><span class="suffix" data-sfx="M"></span></div></div>
+        <div><label class="fld" for="i-cash">Cash &amp; securities</label>
+          <div class="inwrap"><input type="number" id="i-cash" min="0" step="1" value="300"><span class="suffix" data-sfx="M"></span></div></div>
+        <div><label class="fld" for="i-sh">Shares outstanding</label>
+          <div class="inwrap"><input type="number" id="i-sh" min="0.01" step="0.1" value="100"><span class="suffix">M</span></div></div>
+        <div><label class="fld" for="i-px">Current share price</label>
+          <div class="inwrap"><input type="number" id="i-px" min="0.01" step="0.01" value="35"><span class="suffix" data-sfx="cur"></span></div></div>
+        <div><label class="fld" for="i-taxe">Effective tax rate <button class="info" data-tip="taxe">i</button></label>
+          <div class="inwrap"><input type="number" id="i-taxe" min="0" max="60" step="0.1" value="23"><span class="suffix">%</span></div></div>
+        <div><label class="fld" for="i-intx">Interest expense <button class="info" data-tip="intx">i</button></label>
+          <div class="inwrap"><input type="number" id="i-intx" min="0" step="1" value="12"><span class="suffix" data-sfx="M"></span></div>
+          <div class="note" id="covNote"></div></div>
+        <div><label class="fld" for="i-wkLo">52-week low / high <span style="font-weight:400;color:var(--muted)">(optional)</span></label>
+          <div style="display:flex;gap:6px">
+            <input type="number" id="i-wkLo" min="0" step="0.01" placeholder="low">
+            <input type="number" id="i-wkHi" min="0" step="0.01" placeholder="high"></div></div>
+        <div><label class="fld" for="i-anLo">Analyst targets low / high <span style="font-weight:400;color:var(--muted)">(optional)</span></label>
+          <div style="display:flex;gap:6px">
+            <input type="number" id="i-anLo" min="0" step="0.01" placeholder="low">
+            <input type="number" id="i-anHi" min="0" step="0.01" placeholder="high"></div></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="stage-head"><span class="badge">2b</span><h2>Damodaran adjustments</h2>
+        <span class="hint">all off by default</span></div>
+      <div class="swrow"><input type="checkbox" id="adjLeaseOn"><span class="name">Capitalize operating leases <button class="info" data-tip="lease">i</button></span>
+        <span class="mini"><input type="number" id="adjLeaseExp" min="0" step="1" placeholder="expense"><span class="ml" data-sfx="M"></span>
+        <input type="number" id="adjLeaseLife" min="1" max="30" step="1" value="8"><span class="ml">yr</span></span>
+        <span class="fx" id="fxLease"></span></div>
+      <div class="swrow"><input type="checkbox" id="adjRndOn"><span class="name">Capitalize R&amp;D <button class="info" data-tip="rnd">i</button></span>
+        <span class="mini"><input type="number" id="adjRndExp" min="0" step="1" placeholder="R&D"><span class="ml" data-sfx="M"></span>
+        <input type="number" id="adjRndLife" min="2" max="10" step="1" value="5"><span class="ml">yr</span></span>
+        <span class="fx" id="fxRnd"></span></div>
+      <div class="swrow"><input type="checkbox" id="adjSbcOn"><span class="name">Expense stock compensation <button class="info" data-tip="sbc">i</button></span>
+        <span class="mini"><input type="number" id="adjSbcExp" min="0" step="1" placeholder="SBC"><span class="ml" data-sfx="M"></span></span>
+        <span class="fx" id="fxSbc"></span></div>
+      <div class="swrow"><input type="checkbox" id="adjFailOn"><span class="name">Probability of distress <button class="info" data-tip="fail">i</button></span>
+        <span class="mini"><input type="number" id="adjFailP" min="0" max="90" step="1" value="10"><span class="ml">%</span>
+        <input type="number" id="adjFailRec" min="0" max="100" step="5" value="50"><span class="ml">% rec.</span></span>
+        <span class="fx" id="fxFail"></span></div>
+    </section>
+
+    <section class="card">
+      <div class="stage-head"><span class="badge">3</span><h2>Valuation assumptions</h2>
+        <span class="hint">seeded · every value editable</span></div>
+      <div id="assumpRows"></div>
+    </section>
+
+    <section class="card">
+      <div class="stage-head"><span class="badge" style="background:var(--ink)">M</span><h2>Macro snapshot</h2>
+        <span class="hint stamp" id="macroStamp"></span></div>
+      <div id="macroRows"></div>
+      <div class="note warnish" style="margin-top:8px">Embedded macro, industry and country tables are a static
+        snapshot in the style of published Damodaran datasets. Refresh before relying on any output.</div>
+    </section>
+  </div>
+
+  <!-- ================= RIGHT ================= -->
+  <div class="col">
+
+    <div class="card headline" id="headlineCard">
+      <div class="eyebrow">Intrinsic value per share</div>
+      <div class="company" id="hCompany">—</div>
+      <div class="vps-row">
+        <div class="big num" id="hVps">—</div>
+        <div class="vs">vs price <b class="num" id="hPx">—</b><br>margin of safety <b class="num" id="hMos">—</b></div>
+      </div>
+      <span class="verdict fair" id="hVerdict">—</span>
+      <div class="warn" id="wWacc"><strong>Result paused:</strong> mature WACC must exceed terminal growth.
+        Raise WACC or lower terminal growth.</div>
+      <div class="warn amber" id="wCap"><strong>Terminal growth capped at the risk-free rate</strong>
+        (Damodaran's rule: no firm outgrows the economy forever).</div>
+      <div class="warn amber" id="wRoic"></div>
+      <hr class="divider">
+      <div class="metrics">
+        <div class="metric"><div class="k">Enterprise value</div><div class="v num" id="mEv">—</div><div class="s">PV of all FCFF</div></div>
+        <div class="metric"><div class="k">Equity value</div><div class="v num" id="mEq">—</div><div class="s">EV − debt + cash</div></div>
+        <div class="metric" id="mTvWrap"><div class="k">Terminal value share</div><div class="v num" id="mTv">—</div><div class="s" id="mTvNote">of EV beyond forecast</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Football field — where does the price sit?</h3>
+      <div class="sub">Independent lenses on the same company. When ranges overlap, the story is consistent; when they don't, that gap is the analysis.</div>
+      <div class="chart-wrap tall"><canvas id="fieldChart"></canvas></div>
+      <div class="note" id="fieldNote"></div>
+    </div>
+
+    <div class="card">
+      <h3>Reverse DCF — what is the market pricing in?</h3>
+      <div class="sub">Hold everything else constant and solve for the single assumption that justifies today's price.</div>
+      <table class="rev" id="revTable"></table>
+    </div>
+
+    <div class="card">
+      <h3>Cost of capital — how the discount rate is built</h3>
+      <div class="sub">Every line shows its source.</div>
+      <table class="coc" id="cocTable"></table>
+    </div>
+
+    <div class="card">
+      <h3>Sensitivity heatmap</h3>
+      <div class="sub">WACC (rows, ±2pp) vs terminal growth (columns, capped at the risk-free rate). Current setting outlined.</div>
+      <div class="hm-scroll"><table class="heatmap" id="heatmap"></table></div>
+      <div class="hm-legend"><span>Lower</span><div class="hm-bar"></div><span>Higher</span></div>
+    </div>
+
+    <div class="card">
+      <h3>Monte Carlo — value as a distribution</h3>
+      <div class="sub" id="mcSub">6,000 seeded trials over growth, target margin, WACC and capital efficiency (triangular distributions around your inputs). Deterministic: same inputs, same answer.</div>
+      <div class="mcstats">
+        <div class="mcstat"><div class="k">P(undervalued)</div><div class="v num" id="mcP">—</div></div>
+        <div class="mcstat"><div class="k">Median value</div><div class="v num" id="mcMed">—</div></div>
+        <div class="mcstat"><div class="k">10th pctile</div><div class="v num" id="mcP10">—</div></div>
+        <div class="mcstat"><div class="k">90th pctile</div><div class="v num" id="mcP90">—</div></div>
+      </div>
+      <div class="chart-wrap"><canvas id="mcChart"></canvas></div>
+    </div>
+
+    <div class="card">
+      <h3>Tornado — which assumption matters most</h3>
+      <div class="sub">Each driver flexed alone over a sensible range; bars show the swing in intrinsic value per share.</div>
+      <div class="chart-wrap tall"><canvas id="tornChart"></canvas></div>
+    </div>
+
+    <div class="card">
+      <h3>Implied ROIC path — the consistency check</h3>
+      <div class="sub">Growth, margin and reinvestment together imply a return on capital. If it drifts far above WACC forever, your assumptions quietly claim a permanent moat.</div>
+      <div class="chart-wrap"><canvas id="roicChart"></canvas></div>
+      <div class="note" id="roicNote"></div>
+    </div>
+
+    <div class="card">
+      <h3>Forecast — year by year</h3>
+      <div class="sub" id="fcSub"></div>
+      <div class="fc-scroll"><table class="fc" id="fcTable"></table></div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  Educational analyst tool, not investment advice. Reference tables are compact snapshots structured for
+  replacement with full Damodaran datasets (see the DATA object). EDGAR autofill uses official SEC XBRL data;
+  always verify against the filing itself.
+</footer>
+
+<div class="tipbox" id="tipbox"></div>
+
+<script>
+'use strict';
+/* ============================================================
+   EMBEDDED REFERENCE DATA — snapshot, Damodaran-style structure.
+   evEbit / pe are comps bands [low, high] for the football field.
+   ============================================================ */
+const DATA = {
+  asof: 'January 2026',
+  erp: 4.6,
+  industries: {
+    'Advertising':                        {beta:1.10, margin:11.0, s2c:1.85, evEbit:[10,16], pe:[14,20]},
+    'Aerospace / Defense':                {beta:0.95, margin:9.5,  s2c:1.50, evEbit:[14,20], pe:[18,26]},
+    'Air Transport':                      {beta:1.10, margin:7.0,  s2c:0.70, evEbit:[8,12],  pe:[8,14]},
+    'Apparel':                            {beta:0.95, margin:10.5, s2c:1.60, evEbit:[10,15], pe:[14,20]},
+    'Auto & Truck':                       {beta:1.05, margin:6.0,  s2c:1.20, evEbit:[8,12],  pe:[6,12]},
+    'Banks (Money Center)':               {beta:0.85, margin:30.0, s2c:0.60, evEbit:null,    pe:[8,12]},
+    'Beverage (Soft)':                    {beta:0.80, margin:18.0, s2c:1.30, evEbit:[16,22], pe:[20,28]},
+    'Chemical (Specialty)':               {beta:1.00, margin:12.0, s2c:1.00, evEbit:[12,17], pe:[16,22]},
+    'Computer Services':                  {beta:1.05, margin:8.0,  s2c:2.20, evEbit:[11,16], pe:[16,22]},
+    'Drugs (Pharmaceutical)':             {beta:1.00, margin:23.0, s2c:0.90, evEbit:[13,19], pe:[15,24]},
+    'Electronics (Consumer & Office)':    {beta:1.10, margin:8.0,  s2c:1.70, evEbit:[12,17], pe:[14,20]},
+    'Entertainment':                      {beta:1.05, margin:12.0, s2c:1.10, evEbit:[12,18], pe:[16,24]},
+    'Food Processing':                    {beta:0.75, margin:11.0, s2c:1.40, evEbit:[12,16], pe:[15,20]},
+    'Green & Renewable Energy':           {beta:0.95, margin:14.0, s2c:0.45, evEbit:[14,20], pe:[18,28]},
+    'Healthcare Products':                {beta:1.00, margin:16.0, s2c:1.00, evEbit:[15,21], pe:[20,28]},
+    'Hotel / Gaming':                     {beta:1.10, margin:14.0, s2c:0.90, evEbit:[12,17], pe:[16,24]},
+    'Machinery':                          {beta:1.00, margin:12.5, s2c:1.30, evEbit:[12,17], pe:[16,22]},
+    'Oil/Gas (Production & Exploration)': {beta:1.15, margin:18.0, s2c:0.80, evEbit:[6,10],  pe:[8,14]},
+    'Real Estate (Operations & Services)':{beta:1.00, margin:13.0, s2c:0.50, evEbit:[12,18], pe:[14,24]},
+    'Restaurant / Dining':                {beta:1.00, margin:14.0, s2c:1.40, evEbit:[14,20], pe:[20,28]},
+    'Retail (General)':                   {beta:1.00, margin:5.5,  s2c:2.30, evEbit:[10,14], pe:[14,20]},
+    'Retail (Online)':                    {beta:1.30, margin:7.0,  s2c:2.40, evEbit:[16,24], pe:[25,40]},
+    'Semiconductor':                      {beta:1.40, margin:22.0, s2c:1.10, evEbit:[16,26], pe:[20,32]},
+    'Software (Entertainment)':           {beta:1.30, margin:24.0, s2c:1.30, evEbit:[18,26], pe:[24,36]},
+    'Software (System & Application)':    {beta:1.25, margin:26.0, s2c:1.40, evEbit:[20,30], pe:[26,40]},
+    'Telecom Services':                   {beta:0.80, margin:17.0, s2c:0.65, evEbit:[8,12],  pe:[10,16]},
+    'Transportation (Logistics)':         {beta:0.95, margin:8.0,  s2c:1.50, evEbit:[11,16], pe:[14,20]},
+    'Utility (General)':                  {beta:0.55, margin:22.0, s2c:0.40, evEbit:[12,16], pe:[14,18]},
+  },
+  countries: {
+    'United States':  {crp:0.00, cds:0.00, cur:'USD', taxm:25.0},
+    'Canada':         {crp:0.00, cds:0.00, cur:'CAD', taxm:26.1},
+    'Germany':        {crp:0.00, cds:0.00, cur:'EUR', taxm:30.0},
+    'Netherlands':    {crp:0.00, cds:0.00, cur:'EUR', taxm:25.8},
+    'France':         {crp:0.55, cds:0.40, cur:'EUR', taxm:25.8},
+    'Italy':          {crp:1.90, cds:1.35, cur:'EUR', taxm:27.8},
+    'Spain':          {crp:1.40, cds:1.00, cur:'EUR', taxm:25.0},
+    'United Kingdom': {crp:0.55, cds:0.40, cur:'GBP', taxm:25.0},
+    'Switzerland':    {crp:0.00, cds:0.00, cur:'CHF', taxm:19.7},
+    'Sweden':         {crp:0.00, cds:0.00, cur:'SEK', taxm:20.6},
+    'Japan':          {crp:0.85, cds:0.60, cur:'JPY', taxm:30.6},
+    'China':          {crp:0.85, cds:0.60, cur:'CNY', taxm:25.0},
+    'South Korea':    {crp:0.55, cds:0.40, cur:'KRW', taxm:26.4},
+    'India':          {crp:2.10, cds:1.50, cur:'INR', taxm:25.2},
+    'Singapore':      {crp:0.00, cds:0.00, cur:'SGD', taxm:17.0},
+    'Indonesia':      {crp:2.10, cds:1.50, cur:'IDR', taxm:22.0},
+    'Australia':      {crp:0.00, cds:0.00, cur:'AUD', taxm:30.0},
+    'Brazil':         {crp:2.90, cds:2.05, cur:'BRL', taxm:34.0},
+    'Mexico':         {crp:2.40, cds:1.70, cur:'MXN', taxm:30.0},
+    'South Africa':   {crp:2.90, cds:2.05, cur:'ZAR', taxm:27.0},
+    'Turkey':         {crp:4.50, cds:3.20, cur:'TRY', taxm:25.0},
+  },
+  currencies: {
+    USD:{rf:4.30, inf:2.6, sym:'$'},   EUR:{rf:2.60, inf:2.2, sym:'€'},
+    GBP:{rf:4.40, inf:2.9, sym:'£'},   JPY:{rf:1.10, inf:1.8, sym:'¥'},
+    CHF:{rf:0.70, inf:1.2, sym:'CHF '},SEK:{rf:2.40, inf:2.0, sym:'kr '},
+    CAD:{rf:3.40, inf:2.3, sym:'C$'},  AUD:{rf:4.20, inf:2.8, sym:'A$'},
+    CNY:{rf:2.20, inf:1.2, sym:'¥'},   KRW:{rf:3.00, inf:2.1, sym:'₩'},
+    INR:{rf:6.80, inf:4.5, sym:'₹'},   SGD:{rf:3.00, inf:2.0, sym:'S$'},
+    IDR:{rf:6.50, inf:3.0, sym:'Rp '}, BRL:{rf:8.50, inf:4.3, sym:'R$'},
+    MXN:{rf:7.50, inf:4.0, sym:'Mex$'},ZAR:{rf:7.50, inf:4.6, sym:'R '},
+    TRY:{rf:15.0, inf:12.0,sym:'₺'},
+  },
+  ratingTable: [
+    {min:8.50, rating:'Aaa/AAA', spread:0.60}, {min:6.50, rating:'Aa2/AA',  spread:0.75},
+    {min:5.50, rating:'A1/A+',   spread:0.95}, {min:4.25, rating:'A2/A',   spread:1.05},
+    {min:3.00, rating:'A3/A-',   spread:1.20}, {min:2.50, rating:'Baa2/BBB',spread:1.55},
+    {min:2.25, rating:'Ba1/BB+', spread:2.05}, {min:2.00, rating:'Ba2/BB', spread:2.45},
+    {min:1.75, rating:'B1/B+',   spread:3.10}, {min:1.50, rating:'B2/B',   spread:3.85},
+    {min:1.25, rating:'B3/B-',   spread:4.55}, {min:0.80, rating:'Caa/CCC',spread:7.00},
+    {min:0.65, rating:'Ca2/CC',  spread:8.50}, {min:0.20, rating:'C2/C',   spread:10.50},
+    {min:-1e9, rating:'D2/D',    spread:14.00},
+  ],
+};
+/* small built-in ticker -> CIK map for the instant path (rest via company_tickers.json) */
+const TICKER_CIK = {AAPL:320193,MSFT:789019,NVDA:1045810,GOOGL:1652044,GOOG:1652044,AMZN:1018724,
+META:1326801,TSLA:1318605,AVGO:1730168,LLY:59478,JPM:19617,XOM:34088,UNH:731766,V:1403161,
+PG:80424,JNJ:200406,MA:1141391,HD:354950,COST:909832,ORCL:1341439,KO:21344,PEP:77476,ADBE:796343,
+CRM:1108524,NFLX:1065280,AMD:2488,INTC:50863,QCOM:804328,TXN:97476,CAT:18230,BA:12927,DIS:1744489,
+NKE:320187,MCD:63908,WMT:104169,IBM:51143,GE:40545,F:37996,GM:1467858,PFE:78003,MRK:310158,
+ASML:937966,TSM:1046179,SAP:1000184,SNY:1121404,UL:217410,SHEL:1306965,TM:1094517,NVO:353278,AZN:901832};
+
+/* ============================================================
+   BUILT-IN COMPANY LIBRARY — snapshot researched June 10, 2026.
+   Latest completed fiscal year per company (sources noted per row;
+   primarily SEC filings via stockanalysis.com standardized data).
+   Loads instantly with zero network. Prices age fastest: update px.
+   ============================================================ */
+const LIB_ASOF='June 10, 2026';
+const COMPANY_LIB={
+AAPL:{nm:'Apple Inc.',ind:'Electronics (Consumer & Office)',cty:'United States',cur:'USD',rev:416161,ebit:133050,debt:98657,cash:54697,sh:14687.4,px:294.58,pxDate:'2026-06-10',taxe:15.6,intx:0,wkLo:195.07,wkHi:317.40,anLo:200,anHi:400,fy:'FY2025, ended Sep 27 2025',src:'SEC XBRL (10-K filed Oct 31 2025) + Jun 2026 market data',note:'Interest expense not separately disclosed since FY2022; coverage treated as infinite (Aaa).'},
+MSFT:{nm:'Microsoft Corp.',ind:'Software (System & Application)',cty:'United States',cur:'USD',rev:281724,ebit:128528,debt:60588,cash:94565,sh:7430,px:397.36,pxDate:'2026-06-10',taxe:17.6,intx:2385,wkLo:356.28,wkHi:555.45,anLo:400,anHi:870,fy:'FY2025, ended Jun 30 2025',src:'FY25 10-K via SEC XBRL + stockanalysis.com'},
+NVDA:{nm:'NVIDIA Corp.',ind:'Semiconductor',cty:'United States',cur:'USD',rev:215938,ebit:130387,debt:11040,cash:62556,sh:24220,px:200.45,pxDate:'2026-06-10',taxe:15.1,intx:259,wkLo:140.86,wkHi:236.54,anLo:180,anHi:500,fy:'FY2026, ended Jan 25 2026',src:'FY26 10-K + stockanalysis.com'},
+GOOGL:{nm:'Alphabet Inc.',ind:'Advertising',cty:'United States',cur:'USD',rev:402836,ebit:129039,debt:59291,cash:126843,sh:12200,px:356.92,pxDate:'2026-06-10',taxe:16.8,intx:736,wkLo:162.00,wkHi:408.61,anLo:340,anHi:515,fy:'FY2025, ended Dec 31 2025',src:'FY25 10-K via SEC XBRL + stockanalysis.com',note:'Share count is all share classes combined; a June 2026 equity offering will raise it.'},
+AMZN:{nm:'Amazon.com Inc.',ind:'Retail (Online)',cty:'United States',cur:'USD',rev:716924,ebit:79975,debt:152987,cash:123029,sh:10760,px:238.53,pxDate:'2026-06-10',taxe:19.6,intx:2274,wkLo:196.00,wkHi:278.56,anLo:207,anHi:370,fy:'FY2025, ended Dec 31 2025',src:'FY25 10-K + stockanalysis.com',note:'Debt includes ~87B of lease liabilities; pure borrowings ~66B (consider the lease adjustment toggle).'},
+META:{nm:'Meta Platforms Inc.',ind:'Advertising',cty:'United States',cur:'USD',rev:200966,ebit:83276,debt:83897,cash:81592,sh:2540,px:570.98,pxDate:'2026-06-10',taxe:29.6,intx:1165,wkLo:520.26,wkHi:796.25,anLo:700,anHi:1015,fy:'FY2025, ended Dec 31 2025',src:'FY25 10-K via SEC XBRL + stockanalysis.com',note:'FY25 effective tax elevated by one-time items; historical range 12–18%.'},
+TSLA:{nm:'Tesla Inc.',ind:'Auto & Truck',cty:'United States',cur:'USD',rev:94827,ebit:4355,debt:8376,cash:44059,sh:3755,px:381.59,pxDate:'2026-06-10',taxe:27.0,intx:338,wkLo:288.77,wkHi:498.83,anLo:123,anHi:600,fy:'FY2025, ended Dec 31 2025',src:'FY25 10-K + stockanalysis.com',note:'Share count jumped to ~3,755M in late 2025 (large award issuance); verify if precision matters.'},
+AVGO:{nm:'Broadcom Inc.',ind:'Semiconductor',cty:'United States',cur:'USD',rev:63887,ebit:25484,debt:65136,cash:16178,sh:4760,px:371.91,pxDate:'2026-06-10',taxe:12,intx:3210,wkLo:241.40,wkHi:495.00,anLo:216,anHi:650,fy:'FY2025, ended Nov 2 2025',src:'FY25 10-K + stockanalysis.com',note:'FY25 reported a net tax BENEFIT (−1.7%); normalized to ~12% here.'},
+NFLX:{nm:'Netflix Inc.',ind:'Entertainment',cty:'United States',cur:'USD',rev:45183,ebit:13327,debt:14463,cash:9062,sh:4210,px:82.42,pxDate:'2026-06-10',taxe:13.7,intx:777,wkLo:75.01,wkHi:134.12,anLo:80,anHi:151,fy:'FY2025, ended Dec 31 2025',src:'FY25 10-K + stockanalysis.com',note:'All figures post the 10-for-1 split.'},
+AMD:{nm:'Advanced Micro Devices Inc.',ind:'Semiconductor',cty:'United States',cur:'USD',rev:34639,ebit:3694,debt:3847,cash:10552,sh:1630,px:452.40,pxDate:'2026-06-10',taxe:13,intx:131,wkLo:115.06,wkHi:546.44,anLo:225,anHi:665,fy:'FY2025, ended Dec 27 2025',src:'FY25 10-K + stockanalysis.com',note:'FY25 reported a net tax benefit; normalized to ~13% here.'},
+LLY:{nm:'Eli Lilly and Company',ind:'Drugs (Pharmaceutical)',cty:'United States',cur:'USD',rev:65179,ebit:26302,debt:42503,cash:7268,sh:891.7,px:1136.37,pxDate:'2026-06-10',taxe:19.8,intx:895,wkLo:623.78,wkHi:1149.10,anLo:850,anHi:1500,fy:'FY2025, ended Dec 31 2025',src:'FY25 10-K + stockanalysis.com'},
+JPM:{nm:'JPMorgan Chase & Co.',ind:'Banks (Money Center)',cty:'United States',cur:'USD',rev:182447,ebit:72595,debt:435206,cash:343338,sh:2680,px:309.14,pxDate:'2026-06-10',taxe:21.4,intx:0,wkLo:262.71,wkHi:337.25,anLo:295,anHi:391,fy:'FY2025, ended Dec 31 2025',src:'FY25 10-K + stockanalysis.com',note:'Bank: FCFF DCF is a poor fit for lenders (EBIT proxied by pre-tax income, debt is funding not financing). Treat as illustrative; banks are usually valued on dividends or residual income.'},
+V:{nm:'Visa Inc.',ind:'Computer Services',cty:'United States',cur:'USD',rev:40000,ebit:23994,debt:25171,cash:18997,sh:1880,px:321.76,pxDate:'2026-06-10',taxe:17.1,intx:589,wkLo:293.89,wkHi:375.51,anLo:330,anHi:450,fy:'FY2025, ended Sep 30 2025',src:'FY25 10-K + stockanalysis.com',note:'Industry mapped to Computer Services (closest available bucket for a payments network).'},
+XOM:{nm:'Exxon Mobil Corporation',ind:'Oil/Gas (Production & Exploration)',cty:'United States',cur:'USD',rev:323905,ebit:33538,debt:43537,cash:10681,sh:4140,px:151.53,pxDate:'2026-06-10',taxe:27.9,intx:603,wkLo:105.53,wkHi:176.41,anLo:130,anHi:185,fy:'FY2025, ended Dec 31 2025',src:'FY25 10-K + stockanalysis.com'},
+WMT:{nm:'Walmart Inc.',ind:'Retail (General)',cty:'United States',cur:'USD',rev:713163,ebit:29825,debt:67095,cash:10727,sh:7960,px:120.59,pxDate:'2026-06-10',taxe:24.4,intx:2799,wkLo:93.43,wkHi:135.16,anLo:70,anHi:155,fy:'FY2026, ended Jan 31 2026',src:'FY26 10-K + stockanalysis.com',note:'Debt includes lease liabilities; pure borrowings ~44.8B.'},
+UNH:{nm:'UnitedHealth Group Inc.',ind:'Healthcare Products',cty:'United States',cur:'USD',rev:447567,ebit:18964,debt:78389,cash:24365,sh:908.1,px:407.46,pxDate:'2026-06-10',taxe:12.9,intx:4002,wkLo:234.60,wkHi:415.98,anLo:287,anHi:492,fy:'FY2025, ended Dec 31 2025',src:'FY25 10-K + stockanalysis.com',note:'Insurer mapped to Healthcare Products (no insurance bucket); FY25 tax rate unusually low vs ~20% history.'},
+PG:{nm:'Procter & Gamble Co.',ind:'Chemical (Specialty)',cty:'United States',cur:'USD',rev:84284,ebit:20451,debt:34508,cash:9556,sh:2330,px:149.05,pxDate:'2026-06-10',taxe:20.3,intx:907,wkLo:137.62,wkHi:167.25,anLo:145,anHi:186,fy:'FY2025, ended Jun 30 2025',src:'FY25 10-K + stockanalysis.com',note:'Mapped to Chemical (Specialty) — closest bucket for household & personal care.'},
+JNJ:{nm:'Johnson & Johnson',ind:'Drugs (Pharmaceutical)',cty:'United States',cur:'USD',rev:94193,ebit:25287,debt:48000,cash:20102,sh:2410,px:238.49,pxDate:'2026-06-10',taxe:17.7,intx:971,wkLo:149.04,wkHi:251.71,anLo:155,anHi:285,fy:'FY2025, ended Dec 28 2025',src:'FY25 10-K + Q4-25 press release',note:'Debt (~48B) is rounded from the Q4 press release; refine from the 10-K.'},
+HD:{nm:'Home Depot Inc.',ind:'Retail (General)',cty:'United States',cur:'USD',rev:164683,ebit:20890,debt:65350,cash:1389,sh:997.1,px:318.92,pxDate:'2026-06-10',taxe:23.9,intx:2412,wkLo:289.10,wkHi:426.75,anLo:310,anHi:430,fy:'FY2025, ended Feb 1 2026',src:'FY25 10-K + stockanalysis.com',note:'Debt includes lease liabilities; pure borrowings ~55.8B.'},
+KO:{nm:'Coca-Cola Co.',ind:'Beverage (Soft)',cty:'United States',cur:'USD',rev:47941,ebit:13762,debt:45492,cash:15806,sh:4300,px:83.72,pxDate:'2026-06-10',taxe:17.9,intx:1654,wkLo:65.35,wkHi:83.85,anLo:71,anHi:92,fy:'FY2025, ended Dec 31 2025',src:'FY25 10-K + stockanalysis.com'},
+ORCL:{nm:'Oracle Corporation',ind:'Software (System & Application)',cty:'United States',cur:'USD',rev:57399,ebit:17678,debt:104104,cash:11203,sh:2880,px:203.72,pxDate:'2026-06-10',taxe:12.1,intx:3578,wkLo:134.57,wkHi:345.72,anLo:155,anHi:400,fy:'FY2025, ended May 31 2025',src:'FY25 10-K + stockanalysis.com',note:'FY2026 (ended May 2026) reports imminently — refresh after.'},
+CRM:{nm:'Salesforce Inc.',ind:'Software (System & Application)',cty:'United States',cur:'USD',rev:41525,ebit:8331,debt:17176,cash:9565,sh:819,px:170.92,pxDate:'2026-06-10',taxe:21.7,intx:0,wkLo:163.52,wkHi:276.80,anLo:160,anHi:475,fy:'FY2026, ended Jan 31 2026',src:'FY26 10-K + stockanalysis.com',note:'Interest expense not broken out in FY26; ~317M TTM after new post-FY debt.'},
+INTC:{nm:'Intel Corporation',ind:'Semiconductor',cty:'United States',cur:'USD',rev:52853,ebit:-2214,debt:46585,cash:37416,sh:5030,px:105.62,pxDate:'2026-06-10',taxe:25,intx:0,wkLo:18.97,wkHi:132.75,anLo:20,anHi:150,fy:'FY2025, ended Dec 27 2025',src:'FY25 10-K + stockanalysis.com',note:'Negative EBIT: a turnaround case — the margin fade to the industry target IS the thesis. FY25 tax rate anomalous (98%); normalized to 25%.'},
+DIS:{nm:'Walt Disney Co.',ind:'Entertainment',cty:'United States',cur:'USD',rev:94425,ebit:13013,debt:42026,cash:5695,sh:1740,px:99.33,pxDate:'2026-06-09',taxe:20,intx:1305,wkLo:92.19,wkHi:124.69,anLo:77,anHi:164,fy:'FY2025, ended Sep 27 2025',src:'FY25 10-K + stockanalysis.com',note:'FY25 had a one-time net tax benefit (−11.9%); normalized to ~20% here.'},
+MCD:{nm:'McDonald\'s Corporation',ind:'Restaurant / Dining',cty:'United States',cur:'USD',rev:26885,ebit:12393,debt:54814,cash:774,sh:710.5,px:283.82,pxDate:'2026-06-10',taxe:21.4,intx:1582,wkLo:271.85,wkHi:341.75,anLo:250,anHi:407,fy:'FY2025, ended Dec 31 2025',src:'FY25 10-K + stockanalysis.com',note:'Debt includes ~14.8B lease liabilities.'},
+NKE:{nm:'NIKE Inc.',ind:'Apparel',cty:'United States',cur:'USD',rev:46309,ebit:3702,debt:11018,cash:9151,sh:1480,px:44.65,pxDate:'2026-06-09',taxe:17.1,intx:0,wkLo:41.35,wkHi:80.17,anLo:23,anHi:120,fy:'FY2025, ended May 31 2025',src:'FY25 10-K + stockanalysis.com',note:'FY2026 (ended May 2026) reports Jun 30 — refresh after. Net interest was income, not expense.'},
+BA:{nm:'Boeing Company',ind:'Aerospace / Defense',cty:'United States',cur:'USD',rev:89463,ebit:-5400,debt:54098,cash:29400,sh:788.3,px:209.00,pxDate:'2026-06-10',taxe:0,intx:2771,wkLo:176.77,wkHi:254.35,anLo:230,anHi:300,fy:'FY2025, ended Dec 31 2025',src:'FY25 10-K + Q4-25 release',note:'GAAP operating income was +4,281 but includes a ~9.6B one-time disposal gain; core operating LOSS of ~−5.4B used. Tax set to 0 given losses. A turnaround case.'},
+CAT:{nm:'Caterpillar Inc.',ind:'Machinery',cty:'United States',cur:'USD',rev:67589,ebit:11151,debt:43330,cash:9980,sh:460.6,px:856.16,pxDate:'2026-06-10',taxe:24.0,intx:502,wkLo:355.70,wkHi:946.83,anLo:575,anHi:1165,fy:'FY2025, ended Dec 31 2025',src:'FY25 10-K + stockanalysis.com'},
+PEP:{nm:'PepsiCo Inc.',ind:'Beverage (Soft)',cty:'United States',cur:'USD',rev:93925,ebit:11498,debt:49182,cash:9530,sh:1370,px:142.78,pxDate:'2026-06-09',taxe:19.0,intx:1121,wkLo:127.60,wkHi:171.48,anLo:132,anHi:195,fy:'FY2025, ended Dec 27 2025',src:'FY25 10-K + stockanalysis.com'},
+ASML:{nm:'ASML Holding NV',ind:'Semiconductor',cty:'Netherlands',cur:'EUR',rev:32667,ebit:11301,debt:4391,cash:13322,sh:385.4,px:1508.40,pxDate:'2026-06-09',taxe:17.7,intx:110,wkLo:587.80,wkHi:1582.40,anLo:980,anHi:2000,fy:'FY2025, ended Dec 28 2025',src:'FY25 press release + 20-F XBRL (SEC)',note:'Interest expense estimated (~110M gross; ASML reports net finance income).'},
+};
+
+/* ============================================================
+   PURE MODEL — no DOM. Rates as decimals, money in millions.
+   ============================================================ */
+function syntheticRating(coverage){
+  for(const row of DATA.ratingTable){ if(coverage>=row.min) return row; }
+  return DATA.ratingTable[DATA.ratingTable.length-1];
+}
+function costOfCapital(v){
+  const E = v.px*v.sh, D = v.debt;
+  const de = E>0 ? D/E : 0;
+  const betaL = v.betaU*(1+(1-v.taxm)*de);
+  const ke = v.rf + betaL*(v.erp+v.crp);
+  const cov = v.intx>0 ? v.ebitCov/v.intx : (D>0 ? 1e9 : Infinity);
+  const sr = syntheticRating(cov);
+  const kdPre = (v.kdOv!=null) ? v.kdOv : v.rf + sr.spread/100 + v.cds;
+  const kdPost = kdPre*(1-v.taxm);
+  const wE = (E+D)>0 ? E/(E+D) : 1, wD = 1-wE;
+  const wacc = wE*ke + wD*kdPost;
+  return {E,D,de,betaL,ke,cov,rating:sr.rating,spread:sr.spread/100,kdPre,kdPost,wE,wD,wacc};
+}
+function runModel(v, opts){
+  opts = opts||{};
+  const cc = costOfCapital(v);
+  const shift = opts.waccShift||0;
+  const wacc0 = cc.wacc+shift, waccM = v.waccM+shift;
+  const gIn = (opts.gterm!=null)?opts.gterm:v.gterm;
+  const gT = Math.min(gIn, v.rf);
+  const capped = gIn > v.rf + 1e-12;
+  const N = Math.max(1, Math.round(v.years));
+  const m0 = v.rev>0 ? v.ebitv/v.rev : 0;
+  let prev=v.rev, cum=1, pvSum=0, ic=v.ic0;
+  const rows=[];
+  for(let t=1;t<=N;t++){
+    const fade = N>1 ? (t-1)/(N-1) : 1;
+    const g = v.g1 + (gT-v.g1)*fade;
+    const rev = prev*(1+g);
+    const m = m0 + (v.targetMargin-m0)*(t/N);
+    const ebit = rev*m;
+    const tax = Math.max(0, v.taxe + (v.taxm-v.taxe)*(t/N));
+    let nopat = ebit*(1-tax);
+    const reinv = v.s2c>0 ? (rev-prev)/v.s2c : 0;
+    let fcff = nopat - reinv;
+    if(v.sbcPct>0) fcff -= rev*v.sbcPct*(1-tax);   /* SBC as a real, recurring cash cost */
+    const roic = ic>0 ? nopat/ic : null;
+    ic += Math.max(reinv,0);
+    const w = N>1 ? wacc0 + (waccM-wacc0)*fade : wacc0;
+    cum /= (1+w);
+    rows.push({t,g,rev,m,ebit,tax,nopat,reinv,fcff,w,df:cum,pv:fcff*cum,roic});
+    pvSum += fcff*cum;
+    prev = rev;
+  }
+  if(waccM <= gT+1e-9) return {valid:false, cc, gT, capped};
+  const last = rows[N-1];
+  const ebitT1 = last.rev*(1+gT)*v.targetMargin;
+  const nopatT1 = ebitT1*(1-v.taxm);
+  const rr = v.roicT>0 ? Math.min(gT/v.roicT,0.95) : 0;
+  let fcffT1 = nopatT1*(1-rr);
+  if(v.sbcPct>0) fcffT1 -= last.rev*(1+gT)*v.sbcPct*(1-v.taxm);
+  const tv = fcffT1/(waccM-gT);
+  const pvTV = tv*last.df;
+  const ev = pvSum+pvTV;
+  let eq = ev - v.debt + v.cash;
+  let distressed = false;
+  if(v.pFail>0){
+    const distressEq = Math.max(0, v.recovery*ev + v.cash - v.debt);
+    eq = (1-v.pFail)*eq + v.pFail*distressEq;
+    distressed = true;
+  }
+  const vps = v.sh>0 ? eq/v.sh : null;
+  const mos = (vps!=null && v.px>0) ? (vps-v.px)/v.px : null;
+  return {valid:true, cc, rows, gT, capped, rr, fcffT1, tv, pvTV, ev, eq, vps, mos, distressed,
+          tvPct: ev!==0 ? pvTV/ev : 0};
+}
+/* reverse DCF: bisection on one driver to hit the market price */
+function solveFor(v, key, price){
+  const calc = x=>{
+    let res;
+    if(key==='g1')          res = runModel({...v, g1:x});
+    else if(key==='margin') res = runModel({...v, targetMargin:x});
+    else                    res = runModel(v, {waccShift:x});
+    return (res.valid && res.vps!=null) ? res.vps : NaN;
+  };
+  const range = key==='g1' ? [-0.5,1.5] : key==='margin' ? [0.002,0.9] : [-0.12,0.30];
+  let [lo,hi]=range, fLo=calc(lo)-price, fHi=calc(hi)-price;
+  if(isNaN(fLo)||isNaN(fHi)||fLo*fHi>0)
+    return {ok:false, lo, hi, vLo:fLo+price, vHi:fHi+price};
+  for(let i=0;i<80;i++){
+    const mid=(lo+hi)/2, fM=calc(mid)-price;
+    if(isNaN(fM)) break;
+    if(fLo*fM<=0){ hi=mid; fHi=fM; } else { lo=mid; fLo=fM; }
+  }
+  return {ok:true, x:(lo+hi)/2};
+}
+/* seeded Monte Carlo (deterministic) */
+function mulberry32(seed){
+  let a=seed>>>0;
+  return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a);
+    t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; };
+}
+function triangular(rnd, lo, mode, hi){
+  if(hi<=lo) return mode;
+  const u=rnd(), f=(mode-lo)/(hi-lo);
+  return u<f ? lo+Math.sqrt(u*(hi-lo)*(mode-lo)) : hi-Math.sqrt((1-u)*(hi-lo)*(hi-mode));
+}
+function monteCarlo(v, n, seed){
+  const rnd=mulberry32(seed);
+  const g1lo = v.g1-Math.max(Math.abs(v.g1)*0.4,0.03), g1hi=v.g1+Math.max(Math.abs(v.g1)*0.4,0.03);
+  const out=[];
+  for(let i=0;i<n;i++){
+    const trial={...v,
+      g1: triangular(rnd,g1lo,v.g1,g1hi),
+      targetMargin: triangular(rnd,v.targetMargin*0.85,v.targetMargin,Math.min(v.targetMargin*1.15,0.85)),
+      s2c: triangular(rnd,v.s2c*0.8,v.s2c,v.s2c*1.2)};
+    const ws = triangular(rnd,-0.01,0,0.01);
+    const r = runModel(trial,{waccShift:ws});
+    if(r.valid && r.vps!=null && isFinite(r.vps)) out.push(r.vps);
+  }
+  out.sort((a,b)=>a-b);
+  if(!out.length) return null;
+  const q=p=>out[Math.min(out.length-1,Math.floor(p*out.length))];
+  let under=0; for(const x of out) if(x>v.px) under++;
+  /* histogram between p1 and p99 */
+  const lo=q(0.01), hi=q(0.99), bins=24, counts=new Array(bins).fill(0);
+  for(const x of out){ if(x<lo||x>hi) continue;
+    counts[Math.min(bins-1,Math.floor((x-lo)/(hi-lo)*bins))]++; }
+  return {n:out.length, pUnder:under/out.length, p10:q(0.10), p50:q(0.50), p90:q(0.90),
+          lo, hi, counts, bins};
+}
+/* lease & R&D capitalization */
+function leaseCalc(L, Y, kd){
+  if(!(L>0&&Y>0)) return {debt:0, ebitAdd:0};
+  const k=Math.max(kd,0.005);
+  const pv=L*(1-Math.pow(1+k,-Y))/k;
+  return {debt:pv, ebitAdd:L - pv/Y};
+}
+function rndCalc(R, Y, g){
+  if(!(R>0&&Y>0)) return {asset:0, ebitAdd:0};
+  let asset=0, amort=0;
+  for(let i=0;i<Y;i++){
+    const spend=R/Math.pow(1+g,i);
+    asset += spend*(Y-i)/Y;
+    if(i>0) amort += spend/Y;
+  }
+  amort += (R/Math.pow(1+g,Y))/Y;
+  return {asset, ebitAdd:R-amort};
+}
+/* EDGAR annual pickers (pure; payload = companyconcept-style {units:{CUR:[...]}}) */
+function pickAnnualDuration(units, prefCur){
+  if(!units) return null;
+  const curs = prefCur && units[prefCur] ? [prefCur] : Object.keys(units);
+  for(const cur of curs){
+    const ok = (units[cur]||[]).filter(e=>{
+      if(!e.start||!e.end||typeof e.val!=='number') return false;
+      const days=(new Date(e.end)-new Date(e.start))/864e5;
+      return days>300 && days<400 && /^(10-K|20-F|40-F)/.test(e.form||'');
+    });
+    if(ok.length){
+      ok.sort((a,b)=> a.end===b.end ? (a.filed<b.filed?-1:1) : (a.end<b.end?-1:1));
+      const e=ok[ok.length-1];
+      return {val:e.val, end:e.end, form:e.form, filed:e.filed, cur};
+    }
+  }
+  return null;
+}
+function pickLatestInstant(units, prefCur, anyForm){
+  if(!units) return null;
+  const curs = prefCur && units[prefCur] ? [prefCur] : Object.keys(units);
+  for(const cur of curs){
+    const ok=(units[cur]||[]).filter(e=> typeof e.val==='number' && e.end &&
+      (anyForm || /^(10-K|20-F|40-F)/.test(e.form||'')));
+    if(ok.length){
+      ok.sort((a,b)=> a.end===b.end ? ((a.filed||'')<(b.filed||'')?-1:1) : (a.end<b.end?-1:1));
+      const e=ok[ok.length-1];
+      return {val:e.val, end:e.end, form:e.form, filed:e.filed, cur};
+    }
+  }
+  return null;
+}
+/* extract everything from a pasted/fetched companyfacts JSON */
+const XBRL_TAGS = {
+  rev:   ['RevenueFromContractWithCustomerExcludingAssessedTax','Revenues','SalesRevenueNet','RevenueFromContractWithCustomerIncludingAssessedTax'],
+  ebit:  ['OperatingIncomeLoss'],
+  ltdNc: ['LongTermDebtNoncurrent'], ltdC:['LongTermDebtCurrent'], ltd:['LongTermDebt'],
+  stb:   ['ShortTermBorrowings','CommercialPaper'],
+  cash:  ['CashAndCashEquivalentsAtCarryingValue'],
+  sti:   ['ShortTermInvestments','MarketableSecuritiesCurrent'],
+  intx:  ['InterestExpense','InterestExpenseNonoperating','InterestIncomeExpenseNet'],
+  taxExp:['IncomeTaxExpenseBenefit'],
+  pretax:['IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest',
+          'IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments'],
+  rnd:   ['ResearchAndDevelopmentExpense'],
+  sbc:   ['ShareBasedCompensation'],
+};
+const DURATION_FIELDS = {rev:1, ebit:1, intx:1, taxExp:1, pretax:1, rnd:1, sbc:1};
+function extractFromFacts(facts, prefCur){
+  const gaap = facts['us-gaap']||{}, dei = facts['dei']||{};
+  const got={};
+  for(const [field,tags] of Object.entries(XBRL_TAGS)){
+    for(const tag of tags){
+      const node=gaap[tag]; if(!node) continue;
+      const pick = DURATION_FIELDS[field] ? pickAnnualDuration(node.units,prefCur)
+                                          : pickLatestInstant(node.units,prefCur,false);
+      if(pick){ pick.tag=tag; got[field]=pick; break; }
+    }
+  }
+  const shNode = dei['EntityCommonStockSharesOutstanding'];
+  if(shNode){ const p=pickLatestInstant(shNode.units,null,true); if(p){p.tag='dei:EntityCommonStockSharesOutstanding'; got.shares=p;} }
+  return got;
+}
+/* ============================================================ END PURE */
+
+const byId=id=>document.getElementById(id);
+const IND=DATA.industries, CTY=DATA.countries, CUR=DATA.currencies;
+
+/* ---------------- tips ---------------- */
+const TIPS = {
+  ind:'Picks the reference row that seeds beta, target margin, sales-to-capital and the comps bands. Choose what the business actually resembles.',
+  taxe:'Taxes paid as a share of pre-tax income. The model fades it to the country marginal rate by the terminal year.',
+  intx:'Drives interest coverage (EBIT ÷ interest), which sets the synthetic credit rating and default spread.',
+  lease:'Damodaran adjustment: operating leases are debt. PV of lease commitments (annuity at the cost of debt) is added to debt; EBIT is adjusted by lease expense minus implied depreciation.',
+  rnd:'Damodaran adjustment: R&D is investment, not expense. Past R&D is capitalized into a research asset (straight-line amortization); EBIT is adjusted by current R&D minus amortization.',
+  sbc:'Treat stock-based compensation as the real, recurring cash cost it is: each forecast year deducts SBC (held at its current share of revenue) after tax from FCFF.',
+  fail:'For distressed names: value = (1−p) × going-concern equity + p × distress proceeds (recovery % of EV plus cash minus debt, floored at zero).',
+  betaU:'Business-risk beta with leverage stripped out, from the industry table. Re-levered with this company’s own market D/E.',
+  crp:'Extra equity risk for this country over a mature market, added to the ERP.',
+  taxm:'Statutory marginal rate: re-levers beta, sets the after-tax cost of debt, taxes terminal profits.',
+  targetMargin:'The operating margin the company fades toward by the end of the forecast. Seeded with the industry median.',
+  s2c:'Revenue per unit of capital. Reinvestment = revenue change ÷ this. Higher is more capital-efficient.',
+  years:'Length of the fade period. Growth, margin, tax and WACC all converge linearly over these years.',
+  g1:'Year-1 revenue growth, fading linearly to terminal. Anchor on guidance and history; the reverse DCF shows what the market thinks.',
+  gterm:'Growth forever. Capped at the risk-free rate: no firm outgrows the economy in perpetuity.',
+  roicT:'Return on capital in perpetuity. Terminal reinvestment = g ÷ ROIC. Setting it equal to mature WACC assumes competitive advantage fully erodes.',
+  waccM:'The discount rate the company matures into (seed: risk-free + 4.5%). The forecast WACC fades to it; it also discounts the terminal value.',
+  kd:'Pre-tax borrowing rate: risk-free + synthetic-rating spread (+ country default spread). Override with actual bond yields if you have them.',
+  rf:'Long government bond yield in the reporting currency. Base for both costs of capital and the cap on terminal growth.',
+  erp:'Mature-market equity risk premium (Damodaran publishes implied values monthly, ~4 to 5.5%).',
+  inf:'Expected inflation, context only: terminal growth far below it implies real shrinkage forever.',
+};
+const ASSUMP = [
+  {id:'rf', panel:'macro', label:'Risk-free rate', unit:'%', min:0, max:30, step:0.05,
+    seed:e=>CUR[e.cur].rf, src:e=>`10y govt yield · ${e.cur} · snapshot ${DATA.asof}`},
+  {id:'erp', panel:'macro', label:'Mature-market ERP', unit:'%', min:2, max:10, step:0.1,
+    seed:()=>DATA.erp, src:()=>`Implied ERP, mature market · snapshot ${DATA.asof}`},
+  {id:'inf', panel:'macro', label:'Expected inflation', unit:'%', min:0, max:30, step:0.1,
+    seed:e=>CUR[e.cur].inf, src:e=>`Inflation expectation · ${e.cur} · snapshot ${DATA.asof}`},
+  {id:'betaU', label:'Unlevered beta', unit:'', min:0.2, max:3, step:0.01,
+    seed:e=>IND[e.ind].beta, src:e=>`Industry unlevered beta · ${e.ind} · ${DATA.asof}`},
+  {id:'crp', label:'Country risk premium', unit:'%', min:0, max:15, step:0.05,
+    seed:e=>CTY[e.cty].crp, src:e=>`Country risk premium · ${e.cty} · ${DATA.asof}`},
+  {id:'taxm', label:'Marginal tax rate', unit:'%', min:0, max:50, step:0.1,
+    seed:e=>CTY[e.cty].taxm, src:e=>`Marginal corporate rate · ${e.cty} · ${DATA.asof}`},
+  {id:'targetMargin', label:'Target operating margin', unit:'%', min:0, max:60, step:0.5,
+    seed:e=>IND[e.ind].margin, src:e=>`Industry median margin · ${e.ind} · ${DATA.asof}`},
+  {id:'s2c', label:'Sales-to-capital ratio', unit:'×', min:0.1, max:5, step:0.05,
+    seed:e=>IND[e.ind].s2c, src:e=>`Industry sales-to-capital · ${e.ind} · ${DATA.asof}`},
+  {id:'years', label:'High-growth / fade period', unit:'yr', min:3, max:15, step:1,
+    seed:()=>7, src:()=>'Analyst choice — default 7 years'},
+  {id:'g1', label:'Initial revenue growth', unit:'%', min:-20, max:60, step:0.5,
+    seed:()=>8, src:()=>'User judgment — anchor on guidance & history'},
+  {id:'gterm', label:'Terminal growth', unit:'%', min:0, max:8, step:0.1,
+    seed:()=>eff('rf'), src:()=>'Default = risk-free rate (the Damodaran cap)'},
+  {id:'roicT', label:'Terminal ROIC', unit:'%', min:1, max:40, step:0.1,
+    seed:()=>eff('waccM'), src:()=>'Default = mature WACC (no excess returns in perpetuity)'},
+  {id:'waccM', label:'Mature (terminal) WACC', unit:'%', min:2, max:30, step:0.05,
+    seed:()=>eff('rf')+4.5, src:()=>'Heuristic: risk-free + 4.5% for a mature firm'},
+  {id:'kd', label:'Pre-tax cost of debt', unit:'%', min:0, max:40, step:0.05,
+    seed:e=>{const cv=covRatio(); const sr=syntheticRating(cv); return eff('rf')+sr.spread+CTY[e.cty].cds;},
+    src:e=>{const cv=covRatio(); const sr=syntheticRating(cv);
+      return `Synthetic rating ${sr.rating} (coverage ${cv>=1e8?'∞':cv.toFixed(1)}×): rf + ${sr.spread.toFixed(2)}%`+
+             (CTY[e.cty].cds>0?` + ${CTY[e.cty].cds.toFixed(2)}% country`:'');}},
+];
+const SEED_ORDER=['rf','erp','inf','betaU','crp','taxm','targetMargin','s2c','years','g1','waccM','roicT','gterm','kd'];
+const A=Object.fromEntries(ASSUMP.map(a=>[a.id,a]));
+
+/* ---------------- state ---------------- */
+let ov={}, ovSrc={}, seedCache={};
+const LS_KEY='ive3-state', LS_THEME='ive3-theme';
+const FIN_IDS=['i-rev','i-ebitv','i-debt','i-cash','i-sh','i-px','i-taxe','i-intx','i-wkLo','i-wkHi','i-anLo','i-anHi'];
+const ADJ_IDS=['adjLeaseOn','adjLeaseExp','adjLeaseLife','adjRndOn','adjRndExp','adjRndLife','adjSbcOn','adjSbcExp','adjFailOn','adjFailP','adjFailRec'];
+
+function ident(){ return {nm:byId('i-nm').value, ind:byId('i-ind').value, cty:byId('i-cty').value, cur:byId('i-cur').value}; }
+function numV(id, fb){ const x=parseFloat(byId(id).value); return isNaN(x)?fb:x; }
+function covRatio(){
+  const e=numV('i-ebitv',0), i=numV('i-intx',0), d=numV('i-debt',0);
+  return i>0 ? e/i : (d>0?1e9:Infinity);
+}
+function eff(id){ return (id in ov)?ov[id]:seedCache[id]; }
+function seedAll(){ const e=ident(); for(const id of SEED_ORDER) seedCache[id]=A[id].seed(e); }
+
+function buildValues(){
+  const e=ident();
+  const rev=numV('i-rev',0);
+  let ebit=numV('i-ebitv',0), debt=numV('i-debt',0);
+  const kdEff=eff('kd')/100;
+  let ic0 = eff('s2c')>0 ? rev/eff('s2c') : 0;
+  /* Damodaran adjustments */
+  let lease={debt:0,ebitAdd:0}, rndA={asset:0,ebitAdd:0};
+  if(byId('adjLeaseOn').checked){
+    lease=leaseCalc(numV('adjLeaseExp',0), numV('adjLeaseLife',8), kdEff);
+    debt+=lease.debt; ebit+=lease.ebitAdd;
+  }
+  if(byId('adjRndOn').checked){
+    rndA=rndCalc(numV('adjRndExp',0), numV('adjRndLife',5), Math.max(eff('g1')/100,0));
+    ebit+=rndA.ebitAdd; ic0+=rndA.asset;
+  }
+  const sbcOn=byId('adjSbcOn').checked, sbcExp=numV('adjSbcExp',0);
+  const failOn=byId('adjFailOn').checked;
+  return {
+    rev, ebitv:ebit, ebitCov:numV('i-ebitv',0), debt, cash:numV('i-cash',0),
+    sh:Math.max(numV('i-sh',0),1e-9), px:Math.max(numV('i-px',0),1e-9),
+    taxe:numV('i-taxe',0)/100, intx:numV('i-intx',0),
+    betaU:eff('betaU'), crp:eff('crp')/100, cds:CTY[e.cty].cds/100, taxm:eff('taxm')/100,
+    rf:eff('rf')/100, erp:eff('erp')/100,
+    targetMargin:eff('targetMargin')/100, s2c:eff('s2c'),
+    years:eff('years'), g1:eff('g1')/100, gterm:eff('gterm')/100,
+    roicT:eff('roicT')/100, waccM:eff('waccM')/100,
+    kdOv:('kd' in ov)?ov.kd/100:null,
+    sbcPct:(sbcOn&&rev>0)?sbcExp/rev:0,
+    pFail:failOn?numV('adjFailP',0)/100:0, recovery:failOn?numV('adjFailRec',50)/100:0,
+    ic0, leaseDebt:lease.debt, rndAsset:rndA.asset,
+  };
+}
+
+/* ---------------- formatting ---------------- */
+const csym=()=> (CUR[ident().cur]||{sym:ident().cur+' '}).sym;
+const fmtPS=v=> v==null||!isFinite(v)?'—':(v<0?'-':'')+csym()+Math.abs(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+const fmtPS0=v=> v==null||!isFinite(v)?'—':(v<0?'-':'')+csym()+Math.abs(v).toLocaleString('en-US',{maximumFractionDigits:0});
+const fmtMn=v=>(v<0?'-':'')+csym()+Math.abs(v).toLocaleString('en-US',{maximumFractionDigits:0})+'M';
+const fmtMn1=v=>(v<0?'-':'')+Math.abs(v).toLocaleString('en-US',{maximumFractionDigits:1,minimumFractionDigits:1});
+const pct1=v=>(v*100).toFixed(1)+'%';
+const pct2=v=>(v*100).toFixed(2)+'%';
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+/* ---------------- build static UI ---------------- */
+Object.keys(IND).forEach(k=>byId('i-ind').add(new Option(k,k)));
+Object.keys(CTY).forEach(k=>byId('i-cty').add(new Option(k,k)));
+Object.keys(CUR).forEach(k=>byId('i-cur').add(new Option(k,k)));
+byId('asofChip').textContent='Reference data: snapshot '+DATA.asof;
+byId('macroStamp').textContent='as of '+DATA.asof+' · editable';
+ASSUMP.forEach(a=>{
+  const row=document.createElement('div'); row.className='arow';
+  row.innerHTML=
+    `<div class="top"><span class="name">${a.label}</span>`+
+    `<button class="info" data-tip="${a.id}">i</button>`+
+    `<span class="ctrl"><button class="reset" id="r-${a.id}" title="Restore seeded value">↺ reset</button>`+
+    `<input type="number" id="a-${a.id}" min="${a.min}" max="${a.max}" step="${a.step}">`+
+    `<span class="un">${a.unit}</span></span></div>`+
+    `<span class="src" id="c-${a.id}"></span>`;
+  (a.panel==='macro'?byId('macroRows'):byId('assumpRows')).appendChild(row);
+});
+function renderAssumpRows(){
+  const e=ident();
+  ASSUMP.forEach(a=>{
+    const inp=byId('a-'+a.id), chip=byId('c-'+a.id), rst=byId('r-'+a.id);
+    if(a.id in ov){
+      chip.textContent = ovSrc[a.id] || `User override · seeded value was ${(+seedCache[a.id]).toFixed(2)}${a.unit}`;
+      chip.classList.add('ov'); rst.classList.add('show');
+      if(document.activeElement!==inp) inp.value=ov[a.id];
+    }else{
+      chip.textContent=a.src(e); chip.classList.remove('ov'); rst.classList.remove('show');
+      if(document.activeElement!==inp) inp.value=+(+seedCache[a.id]).toFixed(3);
+    }
+  });
+}
+
+/* ---------------- render: headline, coc, heatmap, forecast ---------------- */
+function heatColorParts(t){
+  const lo=[220,38,38], mid=[248,250,252], hi=[5,150,105];
+  const mix=(a,b,k)=>a.map((x,i)=>Math.round(x+(b[i]-x)*k));
+  const rgb=t<0.5?mix(lo,mid,t*2):mix(mid,hi,(t-0.5)*2);
+  const lum=(0.299*rgb[0]+0.587*rgb[1]+0.114*rgb[2])/255;
+  return {bg:`rgb(${rgb.join(',')})`, fg:lum>0.62?'#0F172A':'#FFFFFF'};
+}
+function renderHeadline(v,res){
+  const card=byId('headlineCard');
+  byId('hCompany').textContent=(ident().nm||'Unnamed company')+' · '+ident().ind+' · '+ident().cty;
+  byId('wWacc').classList.toggle('show',!res.valid);
+  byId('wCap').classList.toggle('show',!!res.capped);
+  card.classList.toggle('stale',!res.valid);
+  if(!res.valid) return;
+  byId('hVps').textContent=fmtPS(res.vps);
+  byId('hPx').textContent=fmtPS(v.px);
+  byId('hMos').textContent=res.mos==null?'—':(res.mos>=0?'+':'')+pct1(res.mos);
+  const vd=byId('hVerdict');
+  if(res.mos==null){vd.textContent='—';vd.className='verdict fair';}
+  else if(res.mos>0.10){vd.textContent='UNDERVALUED on these assumptions';vd.className='verdict under';}
+  else if(res.mos<-0.10){vd.textContent='OVERVALUED on these assumptions';vd.className='verdict over';}
+  else {vd.textContent='ROUGHLY FAIRLY VALUED';vd.className='verdict fair';}
+  byId('mEv').textContent=fmtMn(res.ev);
+  byId('mEq').textContent=fmtMn(res.eq);
+  byId('mTv').textContent=pct1(res.tvPct);
+  const heavy=res.tvPct>0.75;
+  byId('mTvWrap').classList.toggle('alert',heavy);
+  byId('mTvNote').textContent=heavy?'⚠ value rests heavily on terminal assumptions':'of EV beyond forecast';
+  /* ROIC sanity flag */
+  const roics=res.rows.map(r=>r.roic).filter(x=>x!=null);
+  const maxR=Math.max(...roics);
+  const w=byId('wRoic');
+  if(maxR>0.40){
+    w.innerHTML=`<strong>Consistency check:</strong> your inputs imply ROIC reaching ${pct1(maxR)} — extremely rare to sustain. See the implied ROIC card.`;
+    w.classList.add('show');
+  } else w.classList.remove('show');
+}
+function renderCoC(v,res){
+  const c=res.cc, e=ident();
+  const line=(k,val,why)=>`<tr><td>${k}<span class="why">${why}</span></td><td class="v num">${val}</td></tr>`;
+  byId('cocTable').innerHTML=
+    line('Risk-free rate',pct2(v.rf),`10y govt, ${e.cur} — macro panel${'rf' in ov?' (override)':''}`)+
+    line('Unlevered beta',v.betaU.toFixed(2),`Industry: ${e.ind}${'betaU' in ov?' (override)':''}`)+
+    line('Market D/E',(c.de*100).toFixed(1)+'%',`debt ${fmtMn(v.debt)}${v.leaseDebt>0?' (incl. capitalized leases '+fmtMn(v.leaseDebt)+')':''} ÷ market equity ${fmtMn(c.E)}`)+
+    line('Levered beta',c.betaL.toFixed(2),'βU × (1 + (1−tax) × D/E)')+
+    line('Equity risk premium',pct2(v.erp+v.crp),`mature ${pct2(v.erp)} + country ${pct2(v.crp)} (${e.cty})`)+
+    line('Cost of equity',pct2(c.ke),'rf + levered β × (ERP + CRP)')+
+    line('Synthetic rating',c.rating,`coverage ${c.cov>=1e8?'∞':c.cov.toFixed(1)}× (EBIT ÷ interest) → spread ${pct2(c.spread)}`)+
+    line('Pre-tax cost of debt',pct2(c.kdPre),('kd' in ov)?'user override':`rf + rating spread${v.cds>0?' + country '+pct2(v.cds):''}`)+
+    line('After-tax cost of debt',pct2(c.kdPost),`× (1 − marginal tax ${pct2(v.taxm)})`)+
+    line('Weights E / D',`${(c.wE*100).toFixed(1)} / ${(c.wD*100).toFixed(1)}`,'market values')+
+    `<tr class="total"><td>WACC (year 1)</td><td class="v num">${pct2(c.wacc)}</td></tr>`+
+    line('Mature WACC (terminal)',pct2(v.waccM),`forecast WACC fades to this${'waccM' in ov?' (override)':' — seed rf + 4.5%'}`);
+}
+function renderHeatmap(v,res){
+  const base=res.cc.wacc, baseG=res.gT;
+  const shifts=[-0.02,-0.01,0,0.01,0.02];
+  const cols=[-0.01,-0.005,0,0.005,0.01].map(o=>Math.min(Math.max(baseG+o,0),v.rf));
+  const grid=shifts.map(s=>cols.map(g=>{
+    const r=runModel(v,{waccShift:s,gterm:g});
+    return (r.valid&&r.vps!=null&&isFinite(r.vps))?r.vps:null;
+  }));
+  const vals=grid.flat().filter(x=>x!=null);
+  const mn=Math.min(...vals), mx=Math.max(...vals);
+  let html='<tr><th>WACC ↓ \\ g∞ →</th>'+cols.map(g=>`<th>${(g*100).toFixed(2)}%</th>`).join('')+'</tr>';
+  shifts.forEach((s,ri)=>{
+    html+=`<tr><th>${((base+s)*100).toFixed(2)}%</th>`;
+    cols.forEach((g,ci)=>{
+      const val=grid[ri][ci];
+      const cur=(s===0&&Math.abs(g-baseG)<1e-12)?' current':'';
+      if(val==null) html+=`<td class="${cur}" style="background:var(--bg);color:var(--muted)">n/a</td>`;
+      else{const t=mx>mn?(val-mn)/(mx-mn):0.5, cl=heatColorParts(t);
+        html+=`<td class="${cur}" style="background:${cl.bg};color:${cl.fg}">${fmtPS0(val)}</td>`;}
+    });
+    html+='</tr>';
+  });
+  byId('heatmap').innerHTML=html;
+}
+function renderForecast(v,res){
+  if(!res.valid){byId('fcTable').innerHTML='';return;}
+  const h='<tr><th>Year</th><th>Growth</th><th>Revenue</th><th>Margin</th><th>EBIT</th><th>Tax</th><th>NOPAT</th><th>Reinvest</th><th>FCFF</th><th>ROIC</th><th>WACC</th><th>PV</th></tr>';
+  const body=res.rows.map(r=>
+    `<tr><td>Yr ${r.t}</td><td class="num">${pct1(r.g)}</td><td class="num">${fmtMn1(r.rev)}</td>`+
+    `<td class="num">${pct1(r.m)}</td><td class="num">${fmtMn1(r.ebit)}</td><td class="num">${pct1(r.tax)}</td>`+
+    `<td class="num">${fmtMn1(r.nopat)}</td><td class="num">${fmtMn1(r.reinv)}</td><td class="num">${fmtMn1(r.fcff)}</td>`+
+    `<td class="num">${r.roic==null?'—':pct1(r.roic)}</td><td class="num">${pct2(r.w)}</td><td class="num">${fmtMn1(r.pv)}</td></tr>`).join('');
+  const term=`<tr class="term"><td>Terminal</td><td class="num">${pct1(res.gT)}</td><td colspan="6">`+
+    `TV = FCFF<sub>T+1</sub> ${fmtMn1(res.fcffT1)} ÷ (WACC ${pct2(v.waccM)} − g ${pct2(res.gT)}); reinvesting ${pct1(res.rr)} of NOPAT (g ÷ ROIC ${pct1(v.roicT)})`+
+    `</td><td colspan="2" class="num">TV ${fmtMn(res.tv)}</td><td></td><td class="num">${fmtMn1(res.pvTV)}</td></tr>`;
+  byId('fcTable').innerHTML=h+body+term;
+  byId('fcSub').textContent=`${res.rows.length}-year fade: growth ${pct1(v.g1)} → ${pct1(res.gT)}, margin ${pct1(res.rows[0].m)} → ${pct1(v.targetMargin)}, tax ${pct1(v.taxe)} → ${pct1(v.taxm)}, WACC ${pct2(res.cc.wacc)} → ${pct2(v.waccM)}. Millions, ${ident().cur}.`+
+    (v.sbcPct>0?` SBC drag ${pct1(v.sbcPct)} of revenue (after tax).`:'');
+}
+
+/* ---------------- reverse DCF ---------------- */
+function renderReverse(v,res){
+  const t=byId('revTable');
+  if(!res.valid){t.innerHTML='';return;}
+  const sG=solveFor(v,'g1',v.px), sM=solveFor(v,'margin',v.px), sW=solveFor(v,'wacc',v.px);
+  const row=(k,val,why)=>`<tr><td>${k}<span class="why">${why}</span></td><td class="v num">${val}</td></tr>`;
+  let html='';
+  html+=row('Implied initial growth',
+    sG.ok?pct1(sG.x):'out of range',
+    sG.ok?`market price needs year-1 growth of ${pct1(sG.x)} fading to ${pct1(res.gT)} — you assume ${pct1(v.g1)}`
+         :`even at ${pct1(1.5)} growth the model gives ${fmtPS(sG.vHi)} — price needs more than growth alone`);
+  html+=row('Implied target margin',
+    sM.ok?pct1(sM.x):'out of range',
+    sM.ok?`price needs margins fading to ${pct1(sM.x)} — you assume ${pct1(v.targetMargin)}, industry median ${pct1(IND[ident().ind].margin/100)}`
+         :`no achievable margin justifies the price holding growth at ${pct1(v.g1)}`);
+  html+=row('Implied WACC',
+    sW.ok?pct2(res.cc.wacc+sW.x):'out of range',
+    sW.ok?`price is fair only if the true discount rate is ${pct2(res.cc.wacc+sW.x)} — your build-up says ${pct2(res.cc.wacc)}`
+         :'no plausible discount rate matches the price on these cash flows');
+  t.innerHTML=html;
+}
+
+/* ---------------- charts ---------------- */
+let fieldChart=null, mcChart=null, tornChart=null, roicChart=null;
+const priceLinePlugin={
+  id:'priceLine',
+  afterDatasetsDraw(ch){
+    const p=ch.options.plugins.priceLine; if(!p||!isFinite(p.price))return;
+    const x=ch.scales.x.getPixelForValue(p.price);
+    if(x<ch.chartArea.left||x>ch.chartArea.right)return;
+    const ctx=ch.ctx; ctx.save();
+    ctx.strokeStyle=p.color; ctx.setLineDash([5,4]); ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.moveTo(x,ch.chartArea.top); ctx.lineTo(x,ch.chartArea.bottom); ctx.stroke();
+    ctx.fillStyle=p.color; ctx.font='600 11px Inter';
+    ctx.fillText(p.label, Math.min(x+5,ch.chartArea.right-95), ch.chartArea.top+11);
+    ctx.restore();
+  }
+};
+function scenarioRuns(v){
+  return {
+    bear:runModel({...v,g1:v.g1*0.6,targetMargin:v.targetMargin*0.85},{waccShift:0.01}),
+    base:runModel(v),
+    bull:runModel({...v,g1:v.g1*1.4,targetMargin:Math.min(v.targetMargin*1.10,0.60)},{waccShift:-0.0075}),
+  };
+}
+function renderField(v,res){
+  const s=scenarioRuns(v);
+  const ind=IND[ident().ind];
+  const eps=(v.ebitCov-v.intx)*(1-v.taxe)/v.sh;
+  const labels=[], data=[], colors=[];
+  const add=(lab,lo,hi,col)=>{ if(lo!=null&&hi!=null&&isFinite(lo)&&isFinite(hi)){labels.push(lab);data.push([Math.min(lo,hi),Math.max(lo,hi)]);colors.push(col);} };
+  add('DCF (bear → bull)', s.bear.valid?s.bear.vps:null, s.bull.valid?s.bull.vps:null, css('--accent'));
+  if(ind.evEbit){
+    const f=m=>(m*v.ebitv - v.debt + v.cash)/v.sh;
+    add(`EV/EBIT comps ${ind.evEbit[0]}–${ind.evEbit[1]}×`, f(ind.evEbit[0]), f(ind.evEbit[1]), css('--muted'));
+  }
+  if(ind.pe && eps>0) add(`P/E comps ${ind.pe[0]}–${ind.pe[1]}×`, ind.pe[0]*eps, ind.pe[1]*eps, css('--muted'));
+  const wkLo=numV('i-wkLo',NaN), wkHi=numV('i-wkHi',NaN);
+  if(!isNaN(wkLo)&&!isNaN(wkHi)) add('52-week range', wkLo, wkHi, css('--amber'));
+  const anLo=numV('i-anLo',NaN), anHi=numV('i-anHi',NaN);
+  if(!isNaN(anLo)&&!isNaN(anHi)) add('Analyst targets', anLo, anHi, css('--pos'));
+  const opts={
+    indexAxis:'y',responsive:true,maintainAspectRatio:false,animation:{duration:200},
+    plugins:{legend:{display:false},
+      priceLine:{price:v.px,label:'Price '+fmtPS0(v.px),color:css('--ink')},
+      tooltip:{callbacks:{label:c=>` ${fmtPS(c.raw[0])} – ${fmtPS(c.raw[1])}`}}},
+    scales:{x:{grid:{color:css('--border')},ticks:{color:css('--muted'),font:{family:'Inter',size:11},callback:x=>fmtPS0(x)}},
+            y:{grid:{display:false},ticks:{color:css('--muted'),font:{family:'Inter',size:11,weight:'600'}}}}
+  };
+  const ds={data,backgroundColor:colors,borderRadius:6,borderSkipped:false,maxBarThickness:26};
+  if(!fieldChart) fieldChart=new Chart(byId('fieldChart'),{type:'bar',plugins:[priceLinePlugin],data:{labels,datasets:[ds]},options:opts});
+  else{fieldChart.data.labels=labels;fieldChart.data.datasets[0]=ds;fieldChart.options=opts;fieldChart.update('none');}
+  byId('fieldNote').textContent=
+    `DCF base ${fmtPS(s.base.valid?s.base.vps:null)} · bear flexes growth ×0.6, margin ×0.85, WACC +1pp · bull flexes growth ×1.4, margin ×1.10, WACC −0.75pp. Comps bands are industry snapshots (${DATA.asof}) applied to this company's EBIT and EPS.`;
+}
+function renderMC(v,res){
+  const mc=monteCarlo(v,6000,42);
+  if(!mc){byId('mcP').textContent='—';return;}
+  byId('mcP').textContent=pct1(mc.pUnder);
+  byId('mcP').style.color = mc.pUnder>0.5?css('--pos'):css('--neg');
+  byId('mcMed').textContent=fmtPS0(mc.p50);
+  byId('mcP10').textContent=fmtPS0(mc.p10);
+  byId('mcP90').textContent=fmtPS0(mc.p90);
+  const labels=mc.counts.map((_,i)=>fmtPS0(mc.lo+(i+0.5)*(mc.hi-mc.lo)/mc.bins));
+  const colors=mc.counts.map((_,i)=>{
+    const mid=mc.lo+(i+0.5)*(mc.hi-mc.lo)/mc.bins;
+    return mid>v.px?css('--pos'):css('--neg');
+  });
+  const ds={data:mc.counts,backgroundColor:colors,borderRadius:3,barPercentage:1,categoryPercentage:0.95};
+  const opts={responsive:true,maintainAspectRatio:false,animation:{duration:200},
+    plugins:{legend:{display:false},tooltip:{callbacks:{title:items=>'≈ '+items[0].label,label:c=>` ${c.parsed.y} of ${mc.n} trials`}}},
+    scales:{x:{grid:{display:false},ticks:{color:css('--muted'),font:{size:9},maxTicksLimit:9}},
+            y:{grid:{color:css('--border')},ticks:{color:css('--muted'),font:{size:10}}}}};
+  if(!mcChart) mcChart=new Chart(byId('mcChart'),{type:'bar',data:{labels,datasets:[ds]},options:opts});
+  else{mcChart.data.labels=labels;mcChart.data.datasets[0]=ds;mcChart.options=opts;mcChart.update('none');}
+  byId('mcSub').textContent=`${mc.n.toLocaleString()} seeded trials: growth ±40% rel., target margin ±15% rel., WACC ±1pp, sales-to-capital ±20% (triangular). Green bins clear today's price of ${fmtPS(v.px)}.`;
+}
+function renderTornado(v,res){
+  if(!res.valid)return;
+  const base=res.vps;
+  const flex=[
+    {lab:'Initial growth',  lo:()=>runModel({...v,g1:v.g1-Math.max(Math.abs(v.g1)*0.25,0.03)}), hi:()=>runModel({...v,g1:v.g1+Math.max(Math.abs(v.g1)*0.25,0.03)})},
+    {lab:'Target margin',   lo:()=>runModel({...v,targetMargin:v.targetMargin*0.85}), hi:()=>runModel({...v,targetMargin:Math.min(v.targetMargin*1.15,0.85)})},
+    {lab:'WACC ±1pp',       lo:()=>runModel(v,{waccShift:0.01}), hi:()=>runModel(v,{waccShift:-0.01})},
+    {lab:'Terminal growth ±0.5pp', lo:()=>runModel(v,{gterm:Math.max(v.gterm-0.005,0)}), hi:()=>runModel(v,{gterm:Math.min(v.gterm+0.005,v.rf)})},
+    {lab:'Sales-to-capital ±20%', lo:()=>runModel({...v,s2c:v.s2c*0.8}), hi:()=>runModel({...v,s2c:v.s2c*1.2})},
+    {lab:'Terminal ROIC ±25%', lo:()=>runModel({...v,roicT:v.roicT*0.75}), hi:()=>runModel({...v,roicT:v.roicT*1.25})},
+    {lab:'Marginal tax ±3pp', lo:()=>runModel({...v,taxm:Math.min(v.taxm+0.03,0.5)}), hi:()=>runModel({...v,taxm:Math.max(v.taxm-0.03,0)})},
+  ];
+  const rows=flex.map(f=>{
+    const a=f.lo(), b=f.hi();
+    const va=(a.valid&&a.vps!=null)?a.vps:base, vb=(b.valid&&b.vps!=null)?b.vps:base;
+    return {lab:f.lab, lo:Math.min(va,vb), hi:Math.max(va,vb), span:Math.abs(vb-va)};
+  }).sort((a,b)=>b.span-a.span);
+  const ds={data:rows.map(r=>[r.lo,r.hi]),backgroundColor:css('--accent'),borderRadius:5,borderSkipped:false,maxBarThickness:22};
+  const opts={
+    indexAxis:'y',responsive:true,maintainAspectRatio:false,animation:{duration:200},
+    plugins:{legend:{display:false},
+      priceLine:{price:base,label:'Base '+fmtPS0(base),color:css('--muted')},
+      tooltip:{callbacks:{label:c=>` ${fmtPS(c.raw[0])} – ${fmtPS(c.raw[1])} (swing ${fmtPS(c.raw[1]-c.raw[0])})`}}},
+    scales:{x:{grid:{color:css('--border')},ticks:{color:css('--muted'),font:{size:10},callback:x=>fmtPS0(x)}},
+            y:{grid:{display:false},ticks:{color:css('--muted'),font:{size:11,weight:'600'}}}}};
+  if(!tornChart) tornChart=new Chart(byId('tornChart'),{type:'bar',plugins:[priceLinePlugin],data:{labels:rows.map(r=>r.lab),datasets:[ds]},options:opts});
+  else{tornChart.data.labels=rows.map(r=>r.lab);tornChart.data.datasets[0]=ds;tornChart.options=opts;tornChart.update('none');}
+}
+function renderRoic(v,res){
+  if(!res.valid)return;
+  const labels=res.rows.map(r=>'Yr '+r.t).concat(['Terminal']);
+  const roics=res.rows.map(r=>r.roic==null?null:r.roic*100).concat([v.roicT*100]);
+  const waccs=res.rows.map(r=>r.w*100).concat([v.waccM*100]);
+  const mk=(lab,data,col,dash)=>({label:lab,data,borderColor:col,backgroundColor:col,
+    borderDash:dash?[5,4]:[],pointRadius:3,tension:0.25,fill:false});
+  const dsets=[mk('Implied ROIC',roics,css('--accent'),false),mk('WACC',waccs,css('--muted'),true)];
+  const opts={responsive:true,maintainAspectRatio:false,animation:{duration:200},
+    plugins:{legend:{labels:{color:css('--muted'),font:{size:11},boxWidth:14}},
+      tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${c.parsed.y==null?'—':c.parsed.y.toFixed(1)+'%'}`}}},
+    scales:{x:{grid:{display:false},ticks:{color:css('--muted'),font:{size:10}}},
+            y:{grid:{color:css('--border')},ticks:{color:css('--muted'),font:{size:10},callback:x=>x+'%'}}}};
+  if(!roicChart) roicChart=new Chart(byId('roicChart'),{type:'line',data:{labels,datasets:dsets},options:opts});
+  else{roicChart.data.labels=labels;roicChart.data.datasets=dsets;roicChart.options=opts;roicChart.update('none');}
+  const roicsClean=res.rows.map(r=>r.roic).filter(x=>x!=null);
+  const maxR=Math.max(...roicsClean);
+  let msg=`Capital base starts at revenue ÷ sales-to-capital = ${fmtMn(v.ic0)}${v.rndAsset>0?' (incl. research asset '+fmtMn(v.rndAsset)+')':''} and grows with reinvestment.`;
+  if(v.roicT>v.waccM+0.001) msg+=` Terminal ROIC ${pct1(v.roicT)} > mature WACC ${pct2(v.waccM)}: you are assuming excess returns in perpetuity — defensible only with a durable moat.`;
+  else msg+=` Terminal ROIC ≈ WACC: competitive advantage assumed to erode fully.`;
+  if(maxR>0.40) msg+=` Peak implied ROIC ${pct1(maxR)} is in the top decile of all firms — make sure the story earns it.`;
+  byId('roicNote').textContent=msg;
+}
+
+/* ---------------- notes & sanity bands ---------------- */
+function renderNotes(v){
+  const e=ident();
+  const m0=v.rev>0?numV('i-ebitv',0)/v.rev:0, med=IND[e.ind].margin/100;
+  const far=Math.abs(m0-med)>0.10;
+  const mn=byId('marginNote');
+  mn.textContent=`Implied margin ${pct1(m0)} · industry median ${pct1(med)}`+(far?' — far from median; check the target margin assumption':'');
+  mn.className='note'+(far?' warnish':'');
+  const cv=covRatio(), sr=syntheticRating(cv);
+  byId('covNote').textContent=`Coverage ${cv>=1e8?'∞':cv.toFixed(1)}× → synthetic rating ${sr.rating}`;
+  byId('curNote').textContent=('__cur' in ov)?'user override':'auto-set from country';
+  byId('fxLease').textContent=byId('adjLeaseOn').checked&&v.leaseDebt>0?
+    `→ adds ${fmtMn(v.leaseDebt)} lease debt; EBIT adjusted to ${fmtMn(v.ebitv)}`:'';
+  byId('fxRnd').textContent=byId('adjRndOn').checked&&v.rndAsset>0?
+    `→ research asset ${fmtMn(v.rndAsset)}; EBIT adjusted to ${fmtMn(v.ebitv)}`:'';
+  byId('fxSbc').textContent=byId('adjSbcOn').checked&&v.sbcPct>0?
+    `→ FCFF reduced by ${pct1(v.sbcPct)} of revenue each year (after tax)`:'';
+  byId('fxFail').textContent=byId('adjFailOn').checked&&v.pFail>0?
+    `→ value = ${pct1(1-v.pFail)} × going concern + ${pct1(v.pFail)} × distress proceeds`:'';
+}
+
+/* ---------------- master update ---------------- */
+let updateTimer=null;
+function update(){
+  seedAll();
+  renderAssumpRows();
+  const v=buildValues();
+  const res=runModel(v);
+  renderNotes(v);
+  renderHeadline(v,res);
+  if(res.valid){
+    renderCoC(v,res); renderHeatmap(v,res); renderForecast(v,res);
+    renderField(v,res); renderReverse(v,res); renderTornado(v,res); renderRoic(v,res);
+    clearTimeout(updateTimer);
+    updateTimer=setTimeout(()=>renderMC(buildValues(),res),120); /* MC debounced */
+  }
+  document.querySelectorAll('[data-sfx="M"]').forEach(s=>s.textContent=ident().cur+'M');
+  document.querySelectorAll('[data-sfx="cur"]').forEach(s=>s.textContent=ident().cur);
+  saveState();
+}
+
+/* ---------------- persistence ---------------- */
+function stateObj(){
+  const fin={}; FIN_IDS.forEach(id=>fin[id]=byId(id).value);
+  const adj={}; ADJ_IDS.forEach(id=>{const el=byId(id); adj[id]=el.type==='checkbox'?el.checked:el.value;});
+  return {ident:ident(), fin, adj, ov, ovSrc};
+}
+function saveState(){
+  try{localStorage.setItem(LS_KEY,JSON.stringify(stateObj()));}catch(e){}
+  const q=new URLSearchParams(), e=ident();
+  q.set('nm',e.nm);q.set('ind',e.ind);q.set('cty',e.cty);q.set('cur',e.cur);
+  FIN_IDS.forEach(id=>{const x=byId(id).value; if(x!=='') q.set(id.slice(2),x);});
+  Object.keys(ov).forEach(k=>{if(k!=='__cur')q.set('ov_'+k,ov[k]);});
+  ADJ_IDS.forEach(id=>{const el=byId(id);
+    if(el.type==='checkbox'){if(el.checked)q.set(id,'1');}
+    else if(el.value!=='')q.set(id,el.value);});
+  history.replaceState(null,'',location.pathname+'?'+q.toString());
+}
+function applyState(s){
+  if(!s)return false;
+  if(s.ident){
+    if(s.ident.ind in IND)byId('i-ind').value=s.ident.ind;
+    if(s.ident.cty in CTY)byId('i-cty').value=s.ident.cty;
+    if(s.ident.cur in CUR)byId('i-cur').value=s.ident.cur;
+    if(typeof s.ident.nm==='string')byId('i-nm').value=s.ident.nm;
+  }
+  if(s.fin)FIN_IDS.forEach(id=>{if(s.fin[id]!=null)byId(id).value=s.fin[id];});
+  if(s.adj)ADJ_IDS.forEach(id=>{const el=byId(id);
+    if(s.adj[id]!=null){if(el.type==='checkbox')el.checked=!!s.adj[id];else el.value=s.adj[id];}});
+  if(s.ov)ov={...s.ov};
+  if(s.ovSrc)ovSrc={...s.ovSrc};
+  return true;
+}
+function loadState(){
+  const url=new URLSearchParams(location.search);
+  if([...url.keys()].length){
+    if(url.get('ind') in IND)byId('i-ind').value=url.get('ind');
+    if(url.get('cty') in CTY)byId('i-cty').value=url.get('cty');
+    if(url.get('cur') in CUR){byId('i-cur').value=url.get('cur');ov.__cur=1;}
+    if(url.has('nm'))byId('i-nm').value=url.get('nm');
+    FIN_IDS.forEach(id=>{const k=id.slice(2);if(url.has(k))byId(id).value=url.get(k);});
+    ADJ_IDS.forEach(id=>{const el=byId(id);
+      if(url.has(id)){if(el.type==='checkbox')el.checked=url.get(id)==='1';else el.value=url.get(id);}});
+    url.forEach((val,key)=>{if(key.startsWith('ov_')&&!isNaN(parseFloat(val))){const id=key.slice(3);if(A[id])ov[id]=parseFloat(val);}});
+    if(!('__cur' in ov))byId('i-cur').value=CTY[byId('i-cty').value].cur;
+    return true;
+  }
+  let s=null; try{s=JSON.parse(localStorage.getItem(LS_KEY)||'null');}catch(e){}
+  return applyState(s);
+}
+
+/* ---------------- worked example: ASML ---------------- */
+const ASML_EXAMPLE={
+  ident:{nm:'ASML Holding NV',ind:'Semiconductor',cty:'Netherlands',cur:'EUR'},
+  fin:{'i-rev':32667,'i-ebitv':11301,'i-debt':4391,'i-cash':13322,'i-sh':385.4,'i-px':1508.40,
+       'i-taxe':17.7,'i-intx':110,'i-wkLo':587.80,'i-wkHi':1582.40,'i-anLo':980,'i-anHi':2000},
+  adj:{adjRndExp:4699,adjRndLife:5,adjLeaseLife:8,adjFailP:5,adjFailRec:50},
+  ov:{g1:12,targetMargin:34.6,roicT:20},
+  ovSrc:{
+    g1:'ASML FY2026 guidance midpoint (€34–39bn) · press release Jan 28 2026',
+    targetMargin:'Holds FY2025 actual (34.6%); 2030 model (GM 56–60%) supports it · ASML Investor Day Nov 2024',
+    roicT:'Analyst judgment: EUV monopoly supports durable excess returns vs the no-moat default',
+  },
+};
+const ASML_SOURCES='FY2025 figures: ASML press release Jan 28 2026 + 20-F XBRL (SEC). Price €1,508.40 Jun 9 2026 (Euronext via TradingView). 52wk €587.80–€1,582.40. Analyst range €980–€2,000 (TradingView/S&P consensus, Jun 2026). Interest expense estimated (~€110M gross; ASML reports net finance income) — refine from the 20-F notes.';
+function loadAsml(){
+  ov={};ovSrc={};
+  applyState(ASML_EXAMPLE);
+  ov={...ASML_EXAMPLE.ov};ovSrc={...ASML_EXAMPLE.ovSrc};
+  byId('asmlDesc').textContent=ASML_SOURCES;
+  update();
+}
+byId('loadAsml').addEventListener('click',loadAsml);
+
+/* ---------------- EDGAR autofill ----------------
+   SEC blocks browser CORS, public proxies rate-limit, and companyfacts
+   files run to 15MB+. So: (1) probe transports with one tiny request and
+   only use one that demonstrably works; (2) fetch small per-concept JSONs
+   with limited concurrency, never the giant companyfacts; (3) keep an
+   always-works open+paste path as the guaranteed fallback. */
+const LS_PROXY='ive3-proxy';
+function transports(){
+  const t=[{name:'direct', wrap:u=>u}];
+  const base=(byId('proxyBase').value||'').trim();
+  if(base) t.push({name:'your proxy', wrap:u=>base+encodeURIComponent(u)});
+  t.push({name:'corsproxy.io', wrap:u=>'https://corsproxy.io/?url='+encodeURIComponent(u)});
+  t.push({name:'codetabs', wrap:u=>'https://api.codetabs.com/v1/proxy?quest='+encodeURIComponent(u)});
+  t.push({name:'allorigins', wrap:u=>'https://api.allorigins.win/raw?url='+encodeURIComponent(u)});
+  return t;
+}
+async function rawJson(wrappedUrl, ms){
+  const ctl=new AbortController(); const t=setTimeout(()=>ctl.abort(),ms||10000);
+  try{
+    const r=await fetch(wrappedUrl,{signal:ctl.signal});
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    return await r.json();      /* HTML error pages fail here → rejected */
+  } finally { clearTimeout(t); }
+}
+let liveTransport=null;
+async function probeTransport(cik10, st){
+  const probeUrl=`https://data.sec.gov/api/xbrl/companyconcept/CIK${cik10}/us-gaap/Assets.json`;
+  for(const tr of transports()){
+    st.textContent=`Testing transport: ${tr.name}…`;
+    try{
+      const j=await rawJson(tr.wrap(probeUrl), tr.name==='direct'?6000:10000);
+      if(j&&j.units){ liveTransport=tr; return tr; }
+    }catch(e){/* next */}
+  }
+  return null;
+}
+function limiter(n){
+  let active=0; const q=[];
+  const next=()=>{ if(active>=n||!q.length)return; active++;
+    const {fn,res,rej}=q.shift();
+    fn().then(res,rej).finally(()=>{active--;next();}); };
+  return fn=>new Promise((res,rej)=>{q.push({fn,res,rej});next();});
+}
+async function fetchConcepts(cik10, prefCur, st){
+  const tr=liveTransport, run=limiter(3), got={};
+  let done=0; const fields=Object.keys(XBRL_TAGS);
+  const total=fields.length+1;
+  const tick=()=>{ st.textContent=`Fetching via ${tr.name}: ${++done}/${total} fields…`; };
+  const fieldJob=async field=>{
+    for(const tag of XBRL_TAGS[field]){
+      try{
+        const j=await rawJson(tr.wrap(`https://data.sec.gov/api/xbrl/companyconcept/CIK${cik10}/us-gaap/${tag}.json`));
+        const pick=DURATION_FIELDS[field]?pickAnnualDuration(j.units,prefCur):pickLatestInstant(j.units,prefCur,false);
+        if(pick){pick.tag=tag; got[field]=pick; break;}
+      }catch(e){/* tag missing through a working transport → try next tag */}
+    }
+    tick();
+  };
+  const shareJob=async()=>{
+    try{
+      const j=await rawJson(tr.wrap(`https://data.sec.gov/api/xbrl/companyconcept/CIK${cik10}/dei/EntityCommonStockSharesOutstanding.json`));
+      const p=pickLatestInstant(j.units,null,true);
+      if(p){p.tag='dei:EntityCommonStockSharesOutstanding'; got.shares=p;}
+    }catch(e){}
+    tick();
+  };
+  await Promise.all([...fields.map(f=>run(()=>fieldJob(f))), run(shareJob)]);
+  return got;
+}
+function setFin(id,val,dec){ byId(id).value=(+val).toFixed(dec!=null?dec:0); }
+function applyExtract(got,tickerLabel){
+  const lines=[];
+  const M=x=>x/1e6;
+  /* staleness guard: a company can stop reporting a tag (e.g. Apple ceased
+     InterestExpense after FY2022) — never mix old tags with the latest year */
+  const refEnd=got.rev?got.rev.end:(got.ebit?got.ebit.end:null);
+  if(refEnd){
+    const stale=[];
+    for(const k of Object.keys(got)){
+      if(k==='shares')continue;
+      const age=(new Date(refEnd)-new Date(got[k].end))/864e5;
+      if(age>550){stale.push(`${k} (${got[k].tag}, ${got[k].end})`);delete got[k];}
+    }
+    if(stale.length)lines.push('Skipped stale tags from older filings: '+stale.join('; ')+' — enter these manually from the latest filing.');
+  }
+  const unit=got.rev?got.rev.cur:(got.ebit?got.ebit.cur:null);
+  if(unit&&CUR[unit]&&ident().cur!==unit){byId('i-cur').value=unit;ov.__cur=1;lines.push(`Currency set to ${unit} (filing unit).`);}
+  if(got.rev){setFin('i-rev',M(got.rev.val));lines.push(`Revenue ${fmtMn(M(got.rev.val))} — ${got.rev.tag}, FY ended ${got.rev.end} (${got.rev.form})`);}
+  if(got.ebit){setFin('i-ebitv',M(got.ebit.val));lines.push(`EBIT ${fmtMn(M(got.ebit.val))} — ${got.ebit.tag}, ${got.ebit.end}`);}
+  let debt=0,dparts=[];
+  if(got.ltdNc){debt+=M(got.ltdNc.val);dparts.push('LT debt');}
+  if(got.ltdC){debt+=M(got.ltdC.val);dparts.push('current LT debt');}
+  if(!got.ltdNc&&!got.ltdC&&got.ltd){debt+=M(got.ltd.val);dparts.push('LongTermDebt');}
+  if(got.stb){debt+=M(got.stb.val);dparts.push('ST borrowings');}
+  if(debt>0){setFin('i-debt',debt);lines.push(`Total debt ${fmtMn(debt)} — ${dparts.join(' + ')}`);}
+  let cash=0;
+  if(got.cash)cash+=M(got.cash.val);
+  if(got.sti)cash+=M(got.sti.val);
+  if(cash>0){setFin('i-cash',cash);lines.push(`Cash & securities ${fmtMn(cash)}${got.sti?' (incl. ST investments)':''}`);}
+  if(got.shares){setFin('i-sh',got.shares.val/1e6,1);lines.push(`Shares ${(got.shares.val/1e6).toFixed(1)}M — ${got.shares.tag}, as of ${got.shares.end}`);}
+  if(got.intx){setFin('i-intx',Math.abs(M(got.intx.val)));lines.push(`Interest expense ${fmtMn(Math.abs(M(got.intx.val)))} — ${got.intx.tag}`);}
+  if(got.taxExp&&got.pretax&&got.pretax.val!==0){
+    const r=Math.max(0,Math.min(60,got.taxExp.val/got.pretax.val*100));
+    setFin('i-taxe',r,1);lines.push(`Effective tax ${r.toFixed(1)}% — tax expense ÷ pre-tax income`);
+  }
+  if(got.rnd){byId('adjRndExp').value=M(got.rnd.val).toFixed(0);lines.push(`R&D ${fmtMn(M(got.rnd.val))} → prefilled in adjustments (toggle to capitalize)`);}
+  if(got.sbc){byId('adjSbcExp').value=M(got.sbc.val).toFixed(0);lines.push(`SBC ${fmtMn(M(got.sbc.val))} → prefilled in adjustments`);}
+  lines.push('⚠ Enter the current share price yourself — EDGAR has no market data. Verify everything against the filing.');
+  byId('edgarStatus').textContent=(tickerLabel?tickerLabel+' loaded.\n':'')+lines.join('\n');
+  update();
+}
+async function resolveCik(tk, st){
+  if(/^\d{1,10}$/.test(tk)) return parseInt(tk,10);   /* raw CIK typed directly */
+  if(TICKER_CIK[tk])return TICKER_CIK[tk];
+  /* full ticker map needs a live transport; probe with a known CIK first */
+  if(!liveTransport) await probeTransport('0000320193', st);
+  if(!liveTransport) throw new Error('could not look up "'+tk+'" — type the exact ticker symbol (AAPL, not Apple); ~50 large caps work fully offline, or type the company\'s numeric CIK from sec.gov directly');
+  const j=await rawJson(liveTransport.wrap('https://www.sec.gov/files/company_tickers.json'),15000);
+  for(const k in j){ if(j[k].ticker===tk) return j[k].cik_str; }
+  throw new Error('ticker not found on EDGAR (US-listed filers only)');
+}
+function setFallbackLinks(cik10){
+  const a=byId('fbOpen');
+  a.href=`https://data.sec.gov/api/xbrl/companyfacts/CIK${cik10}.json`;
+  a.style.display='inline-block';
+  byId('fbHint').textContent='Two clicks, zero dependencies:';
+}
+/* instant path: built-in library, zero network */
+Object.keys(COMPANY_LIB).forEach(t=>{
+  const o=document.createElement('option'); o.value=t;
+  o.label=COMPANY_LIB[t].nm; byId('libTickers').appendChild(o);
+});
+function loadLibEntry(tk, c, origin, clearMissing){
+  ov={}; ovSrc={};
+  if(c.nm)byId('i-nm').value=c.nm;
+  if(c.ind && c.ind in IND)byId('i-ind').value=c.ind;
+  if(c.cty && c.cty in CTY)byId('i-cty').value=c.cty;
+  if(c.cur && c.cur in CUR){byId('i-cur').value=c.cur; ov.__cur=1;}
+  const map={'i-rev':'rev','i-ebitv':'ebit','i-debt':'debt','i-cash':'cash','i-sh':'sh','i-px':'px',
+             'i-taxe':'taxe','i-intx':'intx','i-wkLo':'wkLo','i-wkHi':'wkHi','i-anLo':'anLo','i-anHi':'anHi'};
+  for(const id in map){
+    const x=c[map[id]];
+    if(x!=null) byId(id).value=x;
+    else if(clearMissing) byId(id).value='';
+  }
+  ['adjLeaseOn','adjRndOn','adjSbcOn','adjFailOn'].forEach(id=>byId(id).checked=false);
+  const lines=[`${c.nm||tk} loaded from ${origin}.`];
+  if(c.fy)lines.push(c.fy+'.');
+  lines.push(c.px!=null
+    ? `Price ${c.px} as of ${c.pxDate||'snapshot'} — update it for today.`
+    : '⚠ No price in this data source — enter the current share price yourself.');
+  if(!c.ind)lines.push('⚠ Pick the industry in Stage 1 — it seeds beta, margins and comps.');
+  if(c.src)lines.push('Source: '+c.src+'.');
+  if(c.note)lines.push('Note: '+c.note);
+  lines.push('Append ! to the ticker to force a fresh live EDGAR fetch.');
+  byId('edgarStatus').textContent=lines.join('\n');
+  update();
+}
+function loadLibCompany(tk){
+  loadLibEntry(tk, COMPANY_LIB[tk], 'the built-in library (snapshot '+LIB_ASOF+')', true);
+}
+byId('edgarBtn').addEventListener('click',async()=>{
+  let tk=byId('edgarTicker').value.trim().toUpperCase(), st=byId('edgarStatus');
+  if(!tk){st.textContent='Enter a ticker first (e.g. AAPL).';return;}
+  const force=tk.endsWith('!'); if(force)tk=tk.slice(0,-1);
+  byId('edgarBtn').disabled=true;
+  try{
+    if(!force){
+      /* 1st: nightly pipeline data (same-origin ./data/, present when the
+         GitHub Actions refresh workflow is deployed — see repo README) */
+      try{
+        const r=await fetch('data/'+tk+'.json',{cache:'no-store'});
+        if(r.ok){
+          const c=await r.json();
+          loadLibEntry(tk, c, 'the nightly EDGAR data files'+(c.built?' (built '+c.built+')':''), false);
+          return;
+        }
+      }catch(e){/* no data folder → keep going */}
+      /* 2nd: built-in snapshot library */
+      if(COMPANY_LIB[tk]){ loadLibCompany(tk); return; }
+    }
+    st.textContent='Resolving '+tk+'…';
+    const cik=await resolveCik(tk, st);
+    const cik10=String(cik).padStart(10,'0');
+    setFallbackLinks(cik10);
+    if(!liveTransport) await probeTransport(cik10, st);
+    if(!liveTransport){
+      byId('fbBox').open=true;
+      st.textContent='No live transport available right now (SEC blocks browser CORS; public proxies are rate-limited). Use the guaranteed open+paste path below — the link is ready.';
+      return;
+    }
+    const got=await fetchConcepts(cik10, ident().cur, st);
+    if(!got.rev&&!got.ebit){
+      byId('fbBox').open=true;
+      st.textContent='Transport worked but no usable annual XBRL rows were found (some filers use custom tags). Use the open+paste path below — the full filing JSON parses more tags.';
+      return;
+    }
+    applyExtract(got, tk+' (CIK '+cik10+')');
+  }catch(e){
+    byId('fbBox').open=true;
+    st.textContent=(e.message||e)+' — the open+paste path below always works.';
+  }finally{
+    byId('edgarBtn').disabled=false;
+  }
+});
+function parsePasted(){
+  const st=byId('edgarStatus');
+  const txt=byId('fbPaste').value.trim();
+  if(!txt)return;
+  try{
+    const j=JSON.parse(txt);
+    const facts=j.facts||j;
+    const got=extractFromFacts(facts, ident().cur);
+    if(!got.rev&&!got.ebit)throw new Error('no usable annual data found in this JSON');
+    applyExtract(got, j.entityName||'Pasted filing');
+    byId('fbPaste').value='';
+  }catch(e){st.textContent='Could not parse: '+(e.message||e);}
+}
+byId('fbParse').addEventListener('click',parsePasted);
+byId('fbPaste').addEventListener('paste',()=>setTimeout(parsePasted,50));
+byId('proxyBase').value=localStorage.getItem(LS_PROXY)||'';
+byId('proxyBase').addEventListener('input',()=>{
+  localStorage.setItem(LS_PROXY,byId('proxyBase').value.trim());
+  liveTransport=null; /* re-probe with the new proxy next time */
+});
+
+/* ---------------- events ---------------- */
+FIN_IDS.concat(['i-nm']).forEach(id=>byId(id).addEventListener('input',update));
+ADJ_IDS.forEach(id=>byId(id).addEventListener(byId(id).type==='checkbox'?'change':'input',update));
+byId('i-ind').addEventListener('change',update);
+byId('i-cty').addEventListener('change',()=>{
+  if(!('__cur' in ov))byId('i-cur').value=CTY[byId('i-cty').value].cur;
+  update();
+});
+byId('i-cur').addEventListener('change',()=>{ov.__cur=1;update();});
+ASSUMP.forEach(a=>{
+  const inp=byId('a-'+a.id);
+  inp.addEventListener('input',()=>{
+    const x=parseFloat(inp.value);
+    if(!isNaN(x)){ov[a.id]=Math.min(a.max,Math.max(a.min,x));delete ovSrc[a.id];}
+    update();
+  });
+  byId('r-'+a.id).addEventListener('click',()=>{delete ov[a.id];delete ovSrc[a.id];update();});
+});
+const tipbox=byId('tipbox');
+document.addEventListener('click',ev=>{
+  const btn=ev.target.closest('.info');
+  if(btn){
+    ev.preventDefault();
+    const key=btn.dataset.tip;
+    if(tipbox.classList.contains('open')&&tipbox.dataset.for===key){tipbox.classList.remove('open');return;}
+    tipbox.textContent=TIPS[key]||'';tipbox.dataset.for=key;tipbox.classList.add('open');
+    const r=btn.getBoundingClientRect();
+    tipbox.style.left=Math.min(window.innerWidth-310,Math.max(8,r.left-20))+'px';
+    tipbox.style.top=(r.bottom+window.scrollY+8)+'px';
+  }else if(!ev.target.closest('.tipbox'))tipbox.classList.remove('open');
+});
+function applyTheme(t){
+  document.documentElement.setAttribute('data-theme',t);
+  try{localStorage.setItem(LS_THEME,t);}catch(e){}
+  if(fieldChart)update();
+}
+byId('themeToggle').addEventListener('click',()=>applyTheme(
+  document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark'));
+byId('copyLink').addEventListener('click',()=>{
+  saveState();
+  navigator.clipboard.writeText(location.href).then(()=>{
+    byId('copyLink').textContent='Copied ✓';
+    setTimeout(()=>byId('copyLink').textContent='Copy link',1400);
+  });
+});
+
+/* ---------------- boot ---------------- */
+applyTheme(localStorage.getItem(LS_THEME)||'light');
+if(!loadState()) loadAsml(); else update();
+</script>
+</body>
+</html>
